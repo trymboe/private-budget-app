@@ -335,3 +335,30 @@ describe("budgets", () => {
     expect(flow.rows.map((r) => [Number(r.inflow_minor), Number(r.outflow_minor)])).toEqual([[0, -50_000]]);
   });
 });
+
+describe("removing an account", () => {
+  it("deletes its transactions and categories but leaves other accounts alone", async () => {
+    const user = "00000000-0000-4000-8000-0000000000d1";
+    await createUser(db, user);
+    const cats = await starter(user);
+    const keep = await createAccount(db, user, "Brukskonto");
+    const gone = await createAccount(db, user, "Gammel konto");
+    const kept = await createTransaction(db, user, keep, -10_000, { date: "2026-10-03" });
+    const doomed = await createTransaction(db, user, gone, -20_000, { date: "2026-10-03" });
+    await db.asUser(user, () =>
+      db.query(`select public.categorize_transactions($1::uuid[], $2, false)`, [[kept, doomed], cats["Groceries"]]),
+    );
+
+    // Browser role cannot delete accounts; the server action does it as service role.
+    await expect(db.asUser(user, () => db.query(`delete from public.accounts where id = $1`, [gone]))).rejects.toThrow();
+    await db.query(`delete from public.accounts where id = $1 and user_id = $2`, [gone, user]);
+
+    const txs = await db.query<{ id: string }>(`select id from public.transactions where user_id = $1`, [user]);
+    expect(txs.rows.map((r) => r.id)).toEqual([kept]);
+    const allocs = await db.query<{ transaction_id: string }>(
+      `select transaction_id from public.transaction_allocations where user_id = $1`,
+      [user],
+    );
+    expect(allocs.rows.map((r) => r.transaction_id)).toEqual([kept]);
+  });
+});
