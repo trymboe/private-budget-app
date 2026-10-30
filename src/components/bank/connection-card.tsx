@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { disconnectBank, setAccountOptions, syncNow } from "@/app/actions/bank";
+import { disconnectBank, removeAccount, setAccountOptions, syncNow } from "@/app/actions/bank";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { ConnectionSummary } from "@/lib/data/types";
@@ -132,6 +132,30 @@ export function ConnectionCard({ connection, today }: { connection: ConnectionSu
                   }
                 />
               ) : null}
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  if (
+                    !confirm(
+                      `Remove ${a.name}? All of its transactions and their categories are deleted for good, and your budgets update to match. This cannot be undone.`,
+                    )
+                  )
+                    return;
+                  startTransition(async () => {
+                    const r = await removeAccount(a.id);
+                    toast(
+                      r.ok
+                        ? { message: `Removed ${a.name} and ${r.removed ?? 0} ${r.removed === 1 ? "transaction" : "transactions"}` }
+                        : { message: r.error, tone: "error" },
+                    );
+                    router.refresh();
+                  });
+                }}
+                className="ml-auto text-xs text-ink-3 underline-offset-4 hover:text-brick hover:underline"
+              >
+                Remove
+              </button>
             </div>
           </li>
         ))}

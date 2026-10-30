@@ -205,3 +205,31 @@ export async function disconnectBank(connectionId: string): Promise<ActionResult
   revalidatePath("/", "layout");
   return { ok: true };
 }
+
+/**
+ * Remove one account together with every transaction imported from it (and
+ * their categorisations, via cascade). Budgets are computed from allocations, so
+ * totals update on their own. If the bank access is renewed later, the bank
+ * offers the account again on the "Choose accounts" screen.
+ */
+export async function removeAccount(accountId: string): Promise<ActionResult & { removed?: number }> {
+  const user = await requireUser();
+  if (!z.uuid().safeParse(accountId).success) return { ok: false, error: "Invalid account." };
+  // Users have no delete rights on accounts or transactions under RLS, so this
+  // goes through the server-only client, scoped to the signed-in user.
+  const admin = createAdminClient();
+  const { data: account } = await admin.from("accounts").select("id").eq("id", accountId).eq("user_id", user.id).maybeSingle();
+  if (!account) return { ok: false, error: "Account not found." };
+  const { count } = await admin
+    .from("transactions")
+    .select("id", { count: "exact", head: true })
+    .eq("account_id", accountId)
+    .eq("user_id", user.id);
+  const { error } = await admin.from("accounts").delete().eq("id", accountId).eq("user_id", user.id);
+  if (error) {
+    console.error("[bank] remove account failed", error.code, error.message);
+    return { ok: false, error: "Could not remove the account." };
+  }
+  revalidatePath("/", "layout");
+  return { ok: true, removed: count ?? 0 };
+}
