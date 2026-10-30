@@ -31,7 +31,9 @@ export function ConnectionCard({ connection, today }: { connection: ConnectionSu
   const statusLine =
     c.status === "active"
       ? consentDays !== null
-        ? `Access valid until ${formatShortDate(c.consentValidUntil!.slice(0, 10))}${consentDays <= 14 ? ` (${consentDays} days)` : ""}`
+        ? consentDays <= 14
+          ? `Access ends ${consentDays <= 0 ? "today" : `in ${consentDays} ${consentDays === 1 ? "day" : "days"}`}`
+          : `Access valid until ${formatShortDate(c.consentValidUntil!.slice(0, 10))}`
         : "Active"
       : c.status === "expired"
         ? "Access expired. Your history is kept; renew to continue syncing."

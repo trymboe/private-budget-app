@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ArrowLeftRight, Check, EyeOff, Split, X } from "lucide-react";
 import { categorize, setTreatment, undoReview } from "@/app/actions/transactions";
-import { CategoryMark } from "@/components/category-icon";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
@@ -159,7 +158,7 @@ export function ReviewFlow({ initial, categories, today }: { initial: Transactio
       <article
         key={current.id}
         aria-live="polite"
-        className={cn("mt-8 min-h-48", leaving ? "animate-card-out" : "animate-card-in")}
+        className={cn("mt-8 min-h-40", leaving ? "animate-card-out" : "animate-card-in")}
       >
         <p className="eyebrow">
           {formatDay(current.effectiveDate, today)} · {current.accountName}
@@ -185,7 +184,7 @@ export function ReviewFlow({ initial, categories, today }: { initial: Transactio
         ) : suggested ? (
           <Button size="lg" block variant="accent" onClick={() => chooseCategory(suggested)} className="justify-between">
             <span className="flex items-center gap-2.5">
-              <CategoryMark icon={suggested.icon} color={suggested.color} size="sm" />
+              <Check className="size-4" aria-hidden />
               {suggested.name}
             </span>
             <span className="text-xs font-normal opacity-80">Suggested · tap to confirm</span>

@@ -40,7 +40,7 @@ export function CategoryGrid({
               )}
             >
               <CategoryMark icon={c.icon} color={c.color} size="sm" />
-              <span className="min-w-0 flex-1 truncate leading-tight">{c.name}</span>
+              <span className="line-clamp-2 min-w-0 flex-1 leading-tight">{c.name}</span>
               {selected ? <Check className="size-4 shrink-0" aria-hidden /> : null}
               {showShortcuts && i < 9 && !selected ? (
                 <kbd className="hidden shrink-0 font-sans text-2xs text-ink-3 lg:inline">{i + 1}</kbd>

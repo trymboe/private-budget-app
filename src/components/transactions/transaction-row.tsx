@@ -37,7 +37,12 @@ export function TransactionRow({
     mark = <NeutralMark icon={CircleDashed} dashed />;
     subline = (
       <span className="text-accent">
-        Needs review{suggested ? <span className="text-ink-3"> · {suggested.name}?</span> : null}
+        Needs review
+        {tx.suggestedTreatment === "transfer" ? (
+          <span className="text-ink-3"> · Transfer?</span>
+        ) : suggested ? (
+          <span className="text-ink-3"> · {suggested.name}?</span>
+        ) : null}
       </span>
     );
   }

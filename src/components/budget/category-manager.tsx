@@ -46,7 +46,7 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
   const section = (kind: Category["kind"], title: string) => {
     const list = active.filter((c) => c.kind === kind);
     return (
-      <section className="mt-10 first:mt-0">
+      <section className="mt-10 first-of-type:mt-0">
         <SectionLabel>{title}</SectionLabel>
         <ul className="mt-2 divide-y divide-line">
           {list.map((c, i) => (
@@ -91,7 +91,7 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
 
   return (
     <>
-      <Button variant="secondary" block onClick={() => setEditing("new")} className="mb-10">
+      <Button variant="secondary" block onClick={() => setEditing("new")} className="mb-8">
         <Plus className="size-4" aria-hidden /> New category
       </Button>
       {section("expense", "Spending")}

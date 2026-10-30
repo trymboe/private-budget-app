@@ -80,7 +80,8 @@ export async function getInsights(): Promise<Insights> {
   // Drop leading months with neither budget nor spending (before you started).
   const firstUseful = monthRows.findIndex((m) => m.budget > 0 || m.spent !== 0);
   const useful = firstUseful === -1 ? [] : monthRows.slice(firstUseful);
-  const perf = budgetPerformance(useful.filter((m) => m.budget > 0));
+  // The running month is on the home screen; here only finished months are judged.
+  const perf = budgetPerformance(useful.filter((m) => m.budget > 0 && m.month < current));
 
   // Daily cumulative spending: this month vs last month.
   const perDay = { [current]: new Map<number, number>(), [previous]: new Map<number, number>() } as Record<string, Map<number, number>>;

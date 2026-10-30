@@ -22,7 +22,8 @@ export function DataNotes({
     if (n.kind === "partial_history") {
       lines.push(
         <>
-          {n.accountName}: your bank only provided transactions from {formatShortDate(n.availableFrom)}, so this month is incomplete.
+          {n.accountName}: the earliest transaction your bank shared is from {formatShortDate(n.availableFrom)}, so this month may be
+          incomplete.
         </>,
       );
     } else if (n.kind === "import_incomplete") {

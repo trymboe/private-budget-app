@@ -1,36 +1,63 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Rolig
 
-## Getting Started
+A calm, mobile-first personal budgeting app. It reads your transactions from the
+bank (Handelsbanken Norway first, through Enable Banking and BankID), lets you
+categorise each one with a single tap, and shows where the month stands against
+your budget, without pretending to know more than the bank told it.
 
-First, run the development server:
+- **Home**: this month's position, what is left per day for flexible spending,
+  this week vs a steady pace, categories close to or over budget.
+- **Review**: one transaction at a time, suggested category one tap away, bulk
+  apply per merchant, transfers, exclusions, splits that sum exactly, and Undo.
+- **Transactions**: search, filters, infinite scroll, edit anything.
+- **Budget**: monthly snapshots copied forward, custom categories (rename, icon,
+  colour, reorder, archive, merge).
+- **Insights**: budget vs actual over finished months, category trends, pace vs
+  last month, cash flow kept separate; incomplete months are marked.
+- **Banks & accounts**: consent reminders 14 days ahead, one-tap renew, per-account
+  "count toward budget".
+
+Stack: Next.js 16 (App Router), TypeScript, Tailwind 4, Supabase (Postgres, Auth,
+row-level security), Enable Banking, Vercel with a daily cron. Everything fits in
+free tiers.
+
+## Quick start
 
 ```bash
+npm install
+npm test                  # unit + database tests, no services needed
+cp .env.example .env.local
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The app needs a Supabase project to run; `ENABLE_DEMO_BANK=true` gives you a
+clearly labelled fake bank with a year of transactions for trying it out.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Docs
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- [Setup](docs/SETUP.md): Supabase, Vercel and Enable Banking, step by step,
+  environment variables, cron, demo data.
+- [Architecture](docs/ARCHITECTURE.md): user journeys, data model, money handling,
+  sync and reconciliation, security, tests, limitations.
+- [Enable Banking](docs/ENABLE_BANKING.md): API facts the code relies on, what is
+  verified and what is not, a first live test checklist.
+- [Design](docs/DESIGN.md): design direction, tokens, chart choices.
 
-## Learn More
+## Scripts
 
-To learn more about Next.js, take a look at the following resources:
+| Command | |
+| --- | --- |
+| `npm run dev` | dev server on :3000 |
+| `npm run build` / `npm start` | production build and server |
+| `npm test` | Vitest: unit tests and PGlite database tests |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | ESLint |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Status
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Built and tested locally: 61 automated tests, type check, lint and production
+build pass, and every screen was reviewed at phone and desktop sizes with sample
+data. **Not yet verified against live services**: the Enable Banking API, a real
+Supabase project and the Vercel deployment. See
+[ENABLE_BANKING.md](docs/ENABLE_BANKING.md#first-live-test-step-by-step) for the
+first live test.

@@ -51,5 +51,8 @@ export function displayMerchant(counterparty: string | null, description: string
 
 function titleCase(s: string): string {
   if (s !== s.toUpperCase() && s !== s.toLowerCase()) return s; // already mixed case
-  return s.toLowerCase().replace(/(^|[\s\-/&])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase());
+  return s
+    .toLowerCase()
+    .replace(/(^|[\s\-/&])(\p{L})/gu, (_, sep: string, ch: string) => sep + ch.toUpperCase())
+    .replace(/\b(As|Asa|Ab|Aps|Ba|Da|Nuf)$/u, (m) => m.toUpperCase());
 }
