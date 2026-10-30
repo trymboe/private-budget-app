@@ -4,9 +4,11 @@ import { z } from "zod";
 // Server-side configuration. Validated lazily so a missing banking key only fails
 // the banking routes, not the whole app.
 
+// Supabase is only reached from the server, so the URL and publishable key need no
+// NEXT_PUBLIC_ prefix. The prefixed names are still accepted for compatibility.
 const publicSchema = z.object({
-  NEXT_PUBLIC_SUPABASE_URL: z.url(),
-  NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: z.string().min(20),
+  SUPABASE_URL: z.url(),
+  SUPABASE_PUBLISHABLE_KEY: z.string().min(20),
 });
 
 const serverSchema = publicSchema.extend({
@@ -20,15 +22,19 @@ const bankingSchema = z.object({
   BANK_TOKEN_ENCRYPTION_KEY: z.string().min(40),
 });
 
+function supabaseVars() {
+  return {
+    SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY: process.env.SUPABASE_PUBLISHABLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  };
+}
+
 export function publicEnv() {
-  return publicSchema.parse({
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
-  });
+  return publicSchema.parse(supabaseVars());
 }
 
 export function serverEnv() {
-  return serverSchema.parse(process.env);
+  return serverSchema.parse({ ...process.env, ...supabaseVars() });
 }
 
 export function bankingEnv() {
