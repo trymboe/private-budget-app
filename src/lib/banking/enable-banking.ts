@@ -4,6 +4,7 @@ import { SignJWT } from "jose";
 import { bankingEnv } from "@/lib/env";
 import { parseDecimalToMinor } from "@/lib/money";
 import { normalizeEnableBanking, type EnableBankingTransaction } from "./normalize";
+import { normalizePrivateKeyPem } from "./pem";
 import {
   BankApiError,
   type BankProvider,
@@ -31,11 +32,8 @@ let cachedToken: { value: string; expiresAt: number } | null = null;
 
 function privateKey(): KeyObject {
   if (cachedKey) return cachedKey;
-  let pem = bankingEnv().ENABLE_BANKING_PRIVATE_KEY.trim();
-  // Accept a PEM with literal "\n" (common in dashboards) or a base64-encoded PEM.
-  if (!pem.includes("BEGIN")) pem = Buffer.from(pem, "base64").toString("utf8");
-  pem = pem.replace(/\\n/g, "\n");
-  cachedKey = createPrivateKey(pem); // PKCS#1 or PKCS#8
+  // Pasting into a dashboard often mangles the line breaks; repair before parsing.
+  cachedKey = createPrivateKey(normalizePrivateKeyPem(bankingEnv().ENABLE_BANKING_PRIVATE_KEY)); // PKCS#1 or PKCS#8
   return cachedKey;
 }
 
