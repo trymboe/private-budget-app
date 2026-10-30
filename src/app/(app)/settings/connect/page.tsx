@@ -37,7 +37,9 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
     return rank(a) - rank(b) || a.name.localeCompare(b.name, "nb");
   });
 
-  const existing = reconnect ? connections.find((c) => c.id === reconnect) : undefined;
+  const existing = reconnect
+    ? connections.find((c): c is typeof c & { provider: InstitutionOption["provider"] } => c.id === reconnect && c.provider !== "manual")
+    : undefined;
   const reconnectInfo = existing
     ? {
         id: existing.id,

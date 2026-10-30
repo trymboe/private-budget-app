@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const [profile, connections] = await Promise.all([getProfile(), getConnections()]);
-  const real = connections.filter((c) => c.id !== "disconnected");
+  const real = connections.filter((c) => c.id !== "disconnected" && c.id !== "manual");
   const needsAttention = real.some((c) => c.status === "expired");
 
   const rows = [

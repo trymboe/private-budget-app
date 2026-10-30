@@ -25,7 +25,8 @@ export function ConnectionCard({ connection, today }: { connection: ConnectionSu
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const c = connection;
-  const isOrphan = c.id === "disconnected";
+  // Disconnected and hand-entered accounts have no bank access to show or manage.
+  const isOrphan = c.id === "disconnected" || c.id === "manual";
   const consentDays = c.consentValidUntil ? diffDays(c.consentValidUntil.slice(0, 10), today) : null;
 
   const statusLine =
