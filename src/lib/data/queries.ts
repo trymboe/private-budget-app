@@ -57,6 +57,7 @@ function toTransaction(r: Row): TransactionListItem {
       amountMinor: Number(a.amount_minor),
     })),
     isDemo: account?.provider === "demo",
+    isManual: account?.provider === "manual",
     accountIncluded: account?.include_in_budget === true,
   };
 }
@@ -272,7 +273,7 @@ export const getConnections = cache(async (): Promise<ConnectionSummary[]> => {
     accounts: accounts.data.filter((a) => a.connection_id === c.id).map(toAccount),
   }));
   // Accounts whose connection was removed keep their history.
-  const orphaned = accounts.data.filter((a) => !a.connection_id).map(toAccount);
+  const orphaned = accounts.data.filter((a) => !a.connection_id && a.provider !== "manual").map(toAccount);
   if (orphaned.length > 0) {
     result.push({
       id: "disconnected",
@@ -284,6 +285,20 @@ export const getConnections = cache(async (): Promise<ConnectionSummary[]> => {
       lastSyncError: null,
       rateLimitedUntil: null,
       accounts: orphaned,
+    });
+  }
+  const manual = accounts.data.filter((a) => a.provider === "manual").map(toAccount);
+  if (manual.length > 0) {
+    result.push({
+      id: "manual",
+      provider: "manual",
+      institutionName: "Added by you",
+      status: "active",
+      consentValidUntil: null,
+      lastSyncedAt: null,
+      lastSyncError: null,
+      rateLimitedUntil: null,
+      accounts: manual,
     });
   }
   return result;

@@ -335,3 +335,45 @@ describe("budgets", () => {
     expect(flow.rows.map((r) => [Number(r.inflow_minor), Number(r.outflow_minor)])).toEqual([[0, -50_000]]);
   });
 });
+
+describe("manual transactions", () => {
+  it("lives in a manual account without a bank connection and behaves like bank data", async () => {
+    const user = "00000000-0000-4000-8000-0000000000d2";
+    await createUser(db, user);
+    const cats = await starter(user);
+    // What the server action creates on first use; one manual account per user.
+    const insertManual = () =>
+      db.query<{ id: string }>(
+        `insert into public.accounts (user_id, provider, provider_identity, name, initial_import_completed_at)
+         values ($1, 'manual', 'manual', 'Cash & manual', now()) returning id`,
+        [user],
+      );
+    const account = (await insertManual()).rows[0].id;
+    await expect(insertManual()).rejects.toThrow();
+
+    // The browser role cannot add transactions itself; the server action does.
+    await expect(
+      db.asUser(user, () =>
+        db.query(
+          `insert into public.transactions (user_id, account_id, fingerprint, status, effective_date, amount_minor, currency)
+           values ($1, $2, 'manual:x', 'booked', '2026-10-20', -5000, 'NOK')`,
+          [user, account],
+        ),
+      ),
+    ).rejects.toThrow();
+    const tx = await createTransaction(db, user, account, -5_000, { date: "2026-10-20" });
+
+    await db.asUser(user, () => db.query(`select public.categorize_transactions($1::uuid[], $2, false)`, [[tx], cats["Groceries"]]));
+    // Editing the amount keeps the single category in step.
+    await db.query(`update public.transactions set amount_minor = -7500 where id = $1`, [tx]);
+    const alloc = await db.query<{ amount_minor: number }>(
+      `select amount_minor from public.transaction_allocations where transaction_id = $1`,
+      [tx],
+    );
+    expect(alloc.rows.map((r) => Number(r.amount_minor))).toEqual([-7_500]);
+
+    await db.query(`delete from public.transactions where id = $1 and user_id = $2`, [tx, user]);
+    const left = await db.query(`select 1 from public.transaction_allocations where user_id = $1`, [user]);
+    expect(left.rows).toHaveLength(0);
+  });
+});

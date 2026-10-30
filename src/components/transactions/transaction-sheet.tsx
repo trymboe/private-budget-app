@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { deleteManualTransaction } from "@/app/actions/manual";
 import { categorize, saveNote, setTreatment } from "@/app/actions/transactions";
 import { CategoryMark } from "@/components/category-icon";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { displayMerchant } from "@/lib/merchant";
 import { formatMoney } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import { CategoryGrid, orderForAmount } from "./category-grid";
+import { ManualTransactionForm } from "./manual-transaction-form";
 import { SplitEditor } from "./split-editor";
 
 type SheetProps = {
@@ -43,7 +45,7 @@ function TransactionDetails({
 }: Omit<SheetProps, "tx"> & { tx: TransactionListItem; open: boolean }) {
   const router = useRouter();
   const toast = useToast();
-  const [mode, setMode] = useState<"details" | "split">("details");
+  const [mode, setMode] = useState<"details" | "split" | "edit">("details");
   const [note, setNote] = useState(tx.note ?? "");
   const [pending, startTransition] = useTransition();
 
@@ -82,14 +84,30 @@ function TransactionDetails({
     );
   }
 
+  function remove() {
+    if (!confirm(`Delete ${merchant}? This cannot be undone.`)) return;
+    startTransition(async () => {
+      const result = await deleteManualTransaction(tx.id);
+      if (!result.ok) {
+        toast({ message: result.error, tone: "error" });
+        return;
+      }
+      toast({ message: "Transaction deleted" });
+      onClose();
+      router.refresh();
+    });
+  }
+
   function persistNote() {
     if ((tx!.note ?? "") === note.trim()) return;
     run(() => saveNote(tx!.id, note), { ...tx!, note: note.trim() || null }, "Note saved");
   }
 
   return (
-    <Sheet open={open} onOpenChange={(o) => !o && onClose()} title={mode === "split" ? `Split ${merchant}` : merchant}>
-      {mode === "split" ? (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()} title={mode === "split" ? `Split ${merchant}` : mode === "edit" ? `Edit ${merchant}` : merchant}>
+      {mode === "edit" ? (
+        <ManualTransactionForm categories={categories} today={today} editing={tx} onDone={onClose} />
+      ) : mode === "split" ? (
         <SplitEditor
           transaction={tx}
           categories={categories}
@@ -213,6 +231,17 @@ function TransactionDetails({
               onBlur={persistNote}
             />
           </div>
+
+          {tx.isManual ? (
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="secondary" onClick={() => setMode("edit")} disabled={pending}>
+                Edit
+              </Button>
+              <Button variant="danger" onClick={remove} disabled={pending}>
+                Delete
+              </Button>
+            </div>
+          ) : null}
 
           <Button variant="secondary" block onClick={onClose}>
             Done

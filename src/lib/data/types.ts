@@ -36,12 +36,14 @@ export type TransactionListItem = {
   suggestionReason: string | null;
   allocations: { categoryId: string; amountMinor: Minor }[];
   isDemo: boolean;
+  /** Entered by hand (not from a bank), so the user may edit or delete it. */
+  isManual: boolean;
   accountIncluded: boolean;
 };
 
 export type ConnectionSummary = {
   id: string;
-  provider: "enable_banking" | "demo";
+  provider: "enable_banking" | "demo" | "manual";
   institutionName: string;
   status: "active" | "expired" | "revoked" | "error";
   consentValidUntil: string | null;
