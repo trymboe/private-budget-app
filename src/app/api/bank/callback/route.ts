@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getUser } from "@/lib/auth";
 import { encryptSecret } from "@/lib/banking/crypto";
 import { getProvider } from "@/lib/banking/index";
-import type { ProviderId } from "@/lib/banking/types";
+import { describeBankError, type ProviderId } from "@/lib/banking/types";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // The bank (via Enable Banking) redirects the browser here after the user has
@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
   try {
     session = await provider.completeAuthorization(code);
   } catch (err) {
-    console.error("[bank] session exchange failed", err instanceof Error ? err.name : "unknown");
+    console.error("[bank] session exchange failed", describeBankError(err));
     return back(request, "/settings/connect?error=exchange");
   }
   if (session.accounts.length === 0) return back(request, "/settings/connect?error=no_accounts");

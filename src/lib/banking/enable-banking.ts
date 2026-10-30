@@ -69,13 +69,15 @@ async function request<T>(method: "GET" | "POST" | "DELETE", path: string, body?
 
   // Error bodies carry a machine-readable code; never log the body itself.
   let code = `HTTP_${res.status}`;
+  let detail: string | undefined;
   try {
-    const err = (await res.json()) as { error?: string; code?: string; message?: string };
-    code = err.error || err.code || code;
+    const err = (await res.json()) as { error?: string; code?: string | number; message?: string; detail?: unknown };
+    code = err.error || (typeof err.code === "string" ? err.code : undefined) || code;
+    detail = err.message || (typeof err.detail === "string" ? err.detail : undefined);
   } catch {
     // non-JSON error body
   }
-  throw new BankApiError(`Enable Banking ${method} ${path.split("?")[0]} failed`, code, res.status);
+  throw new BankApiError(`Enable Banking ${method} ${path.split("?")[0]} failed`, code, res.status, detail);
 }
 
 type AspspResponse = {
