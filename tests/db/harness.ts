@@ -28,7 +28,7 @@ export type Db = PGlite & {
 };
 
 export async function createDb(): Promise<Db> {
-  const db = (await PGlite.create()) as Db;
+  const db = (await PGlite.create()) as unknown as Db;
   await db.exec(SUPABASE_STUB);
   const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
   for (const file of files) {

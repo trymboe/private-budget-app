@@ -1,26 +1,230 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/*
+  Design tokens. Warm paper neutrals, near-black ink, one accent (pine), and two
+  muted semantic colours used sparingly: ochre (approaching) and brick (over).
+  See docs/DESIGN.md for the reasoning.
+*/
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+:root {
+  --paper: #f4f1ea;
+  --surface: #fbfaf6;
+  --sunken: #ebe7de;
+  --ink: #1b1a17;
+  --ink-2: #57544c;
+  --ink-3: #8c887d;
+  --line: #e0dbd0;
+  --line-strong: #cdc6b8;
+  --accent: #2c5a4c;
+  --accent-ink: #f4f1ea;
+  --accent-soft: #dce6df;
+  --ochre: #a8741c;
+  --ochre-soft: #f1e4c8;
+  --brick: #9e4330;
+  --brick-soft: #f2dbd3;
+  --focus: #2c5a4c;
+
+  /* Chart diverging pair (under / over budget). Blue-orange rather than
+     green-red so it separates under colour-vision deficiency (validated). */
+  --under: #1f6e93;
+  --over: #b4562f;
+
+  /* Category palette: muted, distinguishable, never neon. */
+  --cat-stone: #8a8478;
+  --cat-pine: #2c5a4c;
+  --cat-moss: #6b7d3e;
+  --cat-ochre: #b98a2e;
+  --cat-clay: #b4694a;
+  --cat-brick: #9e4330;
+  --cat-plum: #7a4d6b;
+  --cat-slate: #4f5f6f;
+  --cat-sky: #5b86a0;
+  --cat-sand: #b8a682;
+
+  color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --paper: #131311;
+    --surface: #1b1a18;
+    --sunken: #0d0d0c;
+    --ink: #ece8df;
+    --ink-2: #aaa59a;
+    --ink-3: #77736a;
+    --line: #2b2a26;
+    --line-strong: #3a3833;
+    --accent: #84b5a3;
+    --accent-ink: #10201b;
+    --accent-soft: #1f3a32;
+    --ochre: #d5a752;
+    --ochre-soft: #3a2f1a;
+    --brick: #d9826d;
+    --brick-soft: #3d231c;
+    --focus: #84b5a3;
+
+    --under: #4f98c4;
+    --over: #d27a50;
+
+    --cat-stone: #a39d90;
+    --cat-pine: #6fa592;
+    --cat-moss: #9aae6a;
+    --cat-ochre: #d5a752;
+    --cat-clay: #d08c6e;
+    --cat-brick: #d9826d;
+    --cat-plum: #b585a6;
+    --cat-slate: #8b9cad;
+    --cat-sky: #8ab4cc;
+    --cat-sand: #cbbb98;
+
+    color-scheme: dark;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-sunken: var(--sunken);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-ochre: var(--ochre);
+  --color-ochre-soft: var(--ochre-soft);
+  --color-brick: var(--brick);
+  --color-brick-soft: var(--brick-soft);
+  --color-under: var(--under);
+  --color-over: var(--over);
+
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-instrument-serif), ui-serif, Georgia, serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Restrained type scale (px): 12 / 13 / 15 / 17 / 22 / 32 / 48 / 64 */
+  --text-2xs: 0.75rem;
+  --text-2xs--line-height: 1rem;
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.125rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.375rem;
+  --text-base: 1.0625rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.375rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 2rem;
+  --text-xl--line-height: 2.25rem;
+  --text-2xl: 3rem;
+  --text-2xl--line-height: 1;
+  --text-3xl: 4rem;
+  --text-3xl--line-height: 1;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "ss01", "cv11";
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  input[type="number"]::-webkit-inner-spin-button,
+  input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+@utility tnum {
+  font-variant-numeric: tabular-nums lining-nums;
+  font-feature-settings: "tnum", "lnum";
+}
+
+@utility eyebrow {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility pt-safe {
+  padding-top: env(safe-area-inset-top);
+}
+
+@keyframes card-out {
+  to {
+    opacity: 0;
+    transform: translateX(-24px) scale(0.98);
+  }
+}
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@keyframes bar-grow {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@utility animate-card-out {
+  animation: card-out 180ms var(--ease-out-soft) forwards;
+}
+@utility animate-card-in {
+  animation: card-in 260ms var(--ease-out-soft) both;
+}
+@utility animate-fade-up {
+  animation: fade-up 320ms var(--ease-out-soft) both;
+}
+@utility animate-bar {
+  transform-origin: left;
+  animation: bar-grow 700ms var(--ease-out-soft) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

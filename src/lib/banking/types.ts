@@ -69,15 +69,18 @@ export class BankApiError extends Error {
     this.name = "BankApiError";
   }
 
-  /** Consent is gone; the user has to re-authorise at their bank. */
+  /**
+   * Consent is gone; the user has to re-authorise at their bank. Decided on the
+   * documented error codes, not on a bare 401, so a misconfigured application key
+   * is not mistaken for an expired consent.
+   */
   get isConsentProblem() {
     return (
       this.code === "EXPIRED_SESSION" ||
       this.code === "REVOKED_SESSION" ||
       this.code === "CLOSED_SESSION" ||
       this.code === "SESSION_DOES_NOT_EXIST" ||
-      this.code === "ACCOUNT_DOES_NOT_EXIST" ||
-      this.status === 401
+      /SESSION|CONSENT/.test(this.code)
     );
   }
 
