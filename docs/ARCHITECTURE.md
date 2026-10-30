@@ -1,6 +1,6 @@
 # Architecture
 
-Rolig is a single-person budgeting app. It reads transactions from your bank,
+Måte is a single-person budgeting app. It reads transactions from your bank,
 asks you to categorise each one once (one tap, usually confirming a suggestion), and
 compares spending to a monthly budget. It is built to be honest about what it does
 not know: incomplete months, pending items, uncategorised spending and other

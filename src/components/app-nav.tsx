@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChartNoAxesColumn, House, ListOrdered, Settings, WalletCards } from "lucide-react";
-import { APP_NAME } from "@/lib/brand";
+import { Logo } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -58,8 +58,8 @@ export function SideNav({ reviewCount, email }: { reviewCount: number; email: st
   const pathname = usePathname();
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line px-4 py-8 lg:flex">
-      <Link href="/" className="px-3 font-display text-xl tracking-tight">
-        {APP_NAME}
+      <Link href="/" className="px-3">
+        <Logo />
       </Link>
       <nav aria-label="Main" className="mt-10">
         <ul className="space-y-0.5">

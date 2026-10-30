@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Instrument_Serif } from "next/font/google";
-import { APP_NAME } from "@/lib/brand";
+import { APP_DESCRIPTION, APP_NAME } from "@/lib/brand";
 import "./globals.css";
 
 const geist = Geist({ variable: "--font-geist", subsets: ["latin", "latin-ext"] });
@@ -13,7 +13,7 @@ const instrumentSerif = Instrument_Serif({
 
 export const metadata: Metadata = {
   title: { default: APP_NAME, template: `%s · ${APP_NAME}` },
-  description: "A calm overview of your money this month.",
+  description: APP_DESCRIPTION,
   applicationName: APP_NAME,
   appleWebApp: { capable: true, title: APP_NAME, statusBarStyle: "default" },
   formatDetection: { telephone: false },
