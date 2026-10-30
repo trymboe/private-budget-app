@@ -31,8 +31,8 @@ redirect).
    (`sb_publishable_…`) and a secret key (`sb_secret_…`). If your project only shows
    legacy `anon`/`service_role` keys, those work in the same variables.
 4. **Authentication → URL Configuration**
-   - Site URL: your production URL, for example `https://rolig-yourname.vercel.app`.
-   - Redirect URLs: add `https://rolig-yourname.vercel.app/**` and
+   - Site URL: your production URL, for example `https://maate.vercel.app`.
+   - Redirect URLs: add `https://maate.vercel.app/**` and
      `http://localhost:3000/**`.
 5. **Authentication → Emails → Templates**. The app verifies email links on the
    server (`/auth/confirm`), so two templates need their link changed:
@@ -64,7 +64,7 @@ dashboard; no data is lost.
    | `SUPABASE_URL` | from step 1.3 |
    | `SUPABASE_PUBLISHABLE_KEY` | from step 1.3 (Sensitive is fine) |
    | `SUPABASE_SECRET_KEY` | from step 1.3 (mark as Sensitive) |
-   | `APP_URL` | `https://rolig-yourname.vercel.app`, no trailing slash |
+   | `APP_URL` | `https://maate.vercel.app`, no trailing slash |
    | `BANK_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` (Sensitive) |
    | `CRON_SECRET` | `openssl rand -hex 32` (Sensitive) |
    | `ENABLE_BANKING_APP_ID` | from step 3 |
@@ -84,7 +84,7 @@ Details and the API facts the code relies on are in
 
 1. Create an account at <https://enablebanking.com> and open the Control Panel.
 2. **Applications → Add application**, environment **Production**.
-   - Redirect URL: `https://rolig-yourname.vercel.app/api/bank/callback`. Add
+   - Redirect URL: `https://maate.vercel.app/api/bank/callback`. Add
      `http://localhost:3000/api/bank/callback` too if you want to connect from local
      development.
    - Let the control panel generate the key in the browser; it downloads a `.pem`
@@ -134,7 +134,7 @@ npm run build      # needs the Supabase variables set
 ## Trying the cron by hand
 
 ```bash
-curl -H "Authorization: Bearer $CRON_SECRET" https://rolig-yourname.vercel.app/api/cron/sync
+curl -H "Authorization: Bearer $CRON_SECRET" https://maate.vercel.app/api/cron/sync
 ```
 
 It returns counts only (connections synced, failed, skipped), never transaction

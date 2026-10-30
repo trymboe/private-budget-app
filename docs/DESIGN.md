@@ -68,6 +68,10 @@ Recharts, styled with the same tokens.
 Short (150–250 ms), ease-out: review cards slide out and in, bars grow once on
 load. All of it is turned off under `prefers-reduced-motion`.
 
-## Name
+## Name and mark
 
-"Rolig" is Norwegian for calm. It is set in one place (`src/lib/brand.ts`).
+"Måte" is Norwegian for way or measure, as in "med måte": in moderation. It is set
+in one place (`src/lib/brand.ts`). The mark is a lowercase å in paper colour on
+the accent green, drawn as strokes so it stays legible at 16 px. The same shape
+lives in `src/app/icon.svg` (browser tab), `src/components/logo.tsx` (in the app,
+following light and dark mode) and the PNG icons for the home screen.

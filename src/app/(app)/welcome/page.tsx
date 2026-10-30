@@ -3,7 +3,7 @@ import { Page } from "@/components/page";
 import { WelcomeSteps } from "@/components/onboarding/welcome-steps";
 import { getCategories, getConnections, getMonthBudgets, getProfile, getToday } from "@/lib/data/queries";
 import { monthStart } from "@/lib/dates";
-import { APP_NAME } from "@/lib/brand";
+import { Logo } from "@/components/logo";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Welcome" };
@@ -39,7 +39,7 @@ export default async function WelcomePage() {
 
   return (
     <Page className="max-w-xl">
-      <p className="font-display text-lg">{APP_NAME}</p>
+      <Logo className="text-lg" />
       <h1 className="mt-10 font-display text-2xl leading-none tracking-tight">Let’s set up your month.</h1>
       <p className="mt-3 text-sm text-ink-2">Three short steps. Skip anything and come back later; the app works from the first minute.</p>
       <WelcomeSteps

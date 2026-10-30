@@ -1,4 +1,4 @@
-# Rolig
+# Måte
 
 A calm, mobile-first personal budgeting app. It reads your transactions from the
 bank (Handelsbanken Norway first, through Enable Banking and BankID), lets you
