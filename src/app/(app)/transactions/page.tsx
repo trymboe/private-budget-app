@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { EmptyState, Page, PageHeader } from "@/components/page";
+import { AddTransactionButton } from "@/components/transactions/manual-transaction-form";
 import { TransactionFilters } from "@/components/transactions/transaction-filters";
 import { TransactionList } from "@/components/transactions/transaction-list";
 import { Button } from "@/components/ui/button";
@@ -45,11 +46,14 @@ export default async function TransactionsPage({
       <PageHeader
         title="Transactions"
         actions={
-          <Button asChild variant="secondary" size="sm">
-            <Link href="/review">
-              Review <ArrowRight className="size-3.5" aria-hidden />
-            </Link>
-          </Button>
+          <>
+            <AddTransactionButton categories={categories} today={today} />
+            <Button asChild variant="secondary" size="sm">
+              <Link href="/review">
+                Review <ArrowRight className="size-3.5" aria-hidden />
+              </Link>
+            </Button>
+          </>
         }
       />
       <TransactionFilters categories={categories} accounts={accounts} months={months} />
@@ -66,7 +70,7 @@ export default async function TransactionsPage({
                 </Button>
               }
             >
-              Connect a bank account and your transactions will appear here automatically.
+              Connect a bank account and your transactions will appear here automatically. You can also add cash and other transactions yourself with Add.
             </EmptyState>
           ) : (
             <EmptyState title="No transactions yet.">The first import may still be running. Check back in a moment.</EmptyState>
