@@ -61,8 +61,8 @@ dashboard; no data is lost.
 
    | Name | Value |
    | --- | --- |
-   | `NEXT_PUBLIC_SUPABASE_URL` | from step 1.3 |
-   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | from step 1.3 |
+   | `SUPABASE_URL` | from step 1.3 |
+   | `SUPABASE_PUBLISHABLE_KEY` | from step 1.3 (Sensitive is fine) |
    | `SUPABASE_SECRET_KEY` | from step 1.3 (mark as Sensitive) |
    | `APP_URL` | `https://rolig-yourname.vercel.app`, no trailing slash |
    | `BANK_TOKEN_ENCRYPTION_KEY` | `openssl rand -base64 32` (Sensitive) |
