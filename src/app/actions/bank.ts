@@ -7,6 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { decryptSecret, randomState } from "@/lib/banking/crypto";
 import { availableProviders, getProvider } from "@/lib/banking/index";
 import { syncConnection } from "@/lib/banking/sync";
+import { describeBankError } from "@/lib/banking/types";
 import { addDays, todayIn } from "@/lib/dates";
 import { getProfile } from "@/lib/data/queries";
 import { serverEnv } from "@/lib/env";
@@ -96,7 +97,7 @@ export async function startBankConnection(_: StartState, formData: FormData): Pr
       redirectUrl: `${serverEnv().APP_URL}/api/bank/callback`,
     }));
   } catch (err) {
-    console.error("[bank] start authorization failed", err instanceof Error ? err.name : "unknown");
+    console.error("[bank] start authorization failed", describeBankError(err));
     return { error: "The bank could not start the authorisation. Try again in a moment." };
   }
   redirect(url);

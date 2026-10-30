@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ConnectForm, type InstitutionOption } from "@/components/bank/connect-form";
 import { EmptyState, Page, PageHeader } from "@/components/page";
 import { availableProviders, getProvider, PREFERRED_INSTITUTION } from "@/lib/banking/index";
+import { describeBankError } from "@/lib/banking/types";
 import { getConnections, getToday } from "@/lib/data/queries";
 
 export const metadata: Metadata = { title: "Connect a bank" };
@@ -26,7 +27,7 @@ export default async function ConnectPage({ searchParams }: { searchParams: Prom
       const list = await getProvider(id).listInstitutions("NO");
       institutions.push(...list.map((i) => ({ provider: id, name: i.name, country: i.country, beta: i.beta, demo: id === "demo" })));
     } catch (err) {
-      console.error("[connect] institution list failed", err instanceof Error ? err.name : "unknown");
+      console.error("[connect] institution list failed", describeBankError(err));
       directoryError = true;
     }
   }

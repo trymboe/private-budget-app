@@ -64,6 +64,8 @@ export class BankApiError extends Error {
     /** Machine-readable code, e.g. EXPIRED_SESSION, ASPSP_RATE_LIMIT_EXCEEDED. */
     readonly code: string,
     readonly status: number,
+    /** Enable Banking's own explanation, e.g. why a request was refused. Never contains account data. */
+    readonly detail?: string,
   ) {
     super(message);
     this.name = "BankApiError";
@@ -110,4 +112,19 @@ export interface BankProvider {
   fetchBalance(input: { sessionId: string; accountUid: string }): Promise<{ amountMinor: Minor; currency: string } | null>;
   normalize(raw: unknown, accountCurrency: string): NormalizedTransaction | null;
   revoke(sessionId: string): Promise<void>;
+}
+
+/**
+ * One log line that says why a bank call failed, without any financial data:
+ * the provider's error code and explanation, or the local error (bad key, missing
+ * setting). Used so setup problems can be diagnosed from the Vercel logs.
+ */
+export function describeBankError(err: unknown): string {
+  const text =
+    err instanceof BankApiError
+      ? `${err.code} (HTTP ${err.status})${err.detail ? `: ${err.detail}` : ""}`
+      : err instanceof Error
+        ? `${err.name}: ${err.message}`
+        : "unknown error";
+  return text.replace(/\s+/g, " ").slice(0, 300);
 }
