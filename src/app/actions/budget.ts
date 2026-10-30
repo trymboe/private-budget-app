@@ -23,7 +23,7 @@ function failed(context: string, error: { message: string; code?: string } | nul
 
 /** Set one category's budget for one month only. Other months are untouched. */
 export async function setCategoryBudget(categoryId: string, monthStart: string, amount: string): Promise<ActionResult> {
-  const user = await requireUser();
+  await requireUser();
   const parsed = z.object({ categoryId: uuid, month }).safeParse({ categoryId, month: monthStart });
   if (!parsed.success) return { ok: false, error: "Invalid request." };
   let minor: number;
@@ -35,10 +35,10 @@ export async function setCategoryBudget(categoryId: string, monthStart: string, 
   if (minor < 0 || minor >= 100_000_000_000) return { ok: false, error: "Enter a positive amount." };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("monthly_budgets").upsert(
-    { user_id: user.id, category_id: parsed.data.categoryId, month: parsed.data.month, amount_minor: minor },
-    { onConflict: "user_id,category_id,month" },
-  );
+  const { error } = await supabase.rpc("set_month_budgets", {
+    p_month: parsed.data.month,
+    p_amounts: { [parsed.data.categoryId]: minor },
+  });
   return error ? failed("budget", error) : done();
 }
 
@@ -148,21 +148,21 @@ export async function reorderCategories(orderedIds: string[]): Promise<ActionRes
 export async function saveInitialBudget(monthStart: string, amounts: Record<string, string>): Promise<ActionResult> {
   const user = await requireUser();
   if (!month.safeParse(monthStart).success) return { ok: false, error: "Invalid month." };
-  const rows: { user_id: string; category_id: string; month: string; amount_minor: number }[] = [];
+  const budgets: Record<string, number> = {};
   for (const [categoryId, value] of Object.entries(amounts)) {
     if (!uuid.safeParse(categoryId).success) return { ok: false, error: "Invalid category." };
     if (!value.trim()) continue;
     try {
       const minor = parseDecimalToMinor(value);
       if (minor < 0) return { ok: false, error: "Budgets must be positive." };
-      rows.push({ user_id: user.id, category_id: categoryId, month: monthStart, amount_minor: minor });
+      budgets[categoryId] = minor;
     } catch {
       return { ok: false, error: "Enter amounts like 4500 or 4500,50." };
     }
   }
   const supabase = await createClient();
-  if (rows.length > 0) {
-    const { error } = await supabase.from("monthly_budgets").upsert(rows, { onConflict: "user_id,category_id,month" });
+  if (Object.keys(budgets).length > 0) {
+    const { error } = await supabase.rpc("set_month_budgets", { p_month: monthStart, p_amounts: budgets });
     if (error) return failed("initial budget", error);
   }
   const { error } = await supabase.from("profiles").update({ onboarding_budget_at: new Date().toISOString() }).eq("id", user.id);

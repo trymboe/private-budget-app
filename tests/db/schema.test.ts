@@ -233,6 +233,47 @@ describe("budgets", () => {
     expect(again.rows[0].n).toBe(0);
   });
 
+  it("saves budget amounts from the app, creating or updating only the amount", async () => {
+    const user = "00000000-0000-4000-8000-0000000000f6";
+    await createUser(db, user);
+    const cats = await starter(user);
+
+    // What PostgREST's upsert sends: it also updates the key columns, which the
+    // browser role may not do. This is the "That did not save" bug.
+    await expect(
+      db.asUser(user, () =>
+        db.query(
+          `insert into public.monthly_budgets (user_id, category_id, month, amount_minor)
+           values ($1, $2, '2026-10-01', 400000)
+           on conflict (user_id, category_id, month) do update set
+             user_id = excluded.user_id, category_id = excluded.category_id,
+             month = excluded.month, amount_minor = excluded.amount_minor`,
+          [user, cats["Groceries"]],
+        ),
+      ),
+    ).rejects.toThrow(/permission denied/);
+
+    const save = (amounts: Record<string, number>) =>
+      db.asUser(user, () =>
+        db.query<{ n: number }>(`select public.set_month_budgets('2026-10-01', $1::jsonb) as n`, [
+          JSON.stringify(amounts),
+        ]),
+      );
+    expect((await save({ [cats["Groceries"]]: 450000, [cats["Transport"]]: 90000 })).rows[0].n).toBe(2);
+    expect((await save({ [cats["Groceries"]]: 500000 })).rows[0].n).toBe(1);
+
+    const { rows } = await db.query<{ category_id: string; amount_minor: string }>(
+      `select category_id, amount_minor from public.monthly_budgets where user_id = $1 and month = '2026-10-01'`,
+      [user],
+    );
+    const byCategory = Object.fromEntries(rows.map((r) => [r.category_id, Number(r.amount_minor)]));
+    expect(byCategory).toEqual({ [cats["Groceries"]]: 500000, [cats["Transport"]]: 90000 });
+
+    // Someone else's category is rejected by the composite foreign key.
+    const other = await starter(BOB);
+    await expect(save({ [other["Groceries"]]: 1 })).rejects.toThrow();
+  });
+
   it("merges categories without changing historical totals", async () => {
     const user = "00000000-0000-4000-8000-0000000000d4";
     await createUser(db, user);
