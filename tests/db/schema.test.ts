@@ -93,6 +93,14 @@ describe("row level security", () => {
       ),
     ).rejects.toThrow();
   });
+
+  it("gives tables added by later migrations no access for the browser role", async () => {
+    await db.exec(`create table public.later_table (id int); alter table public.later_table enable row level security;`);
+    await db.query(`insert into public.later_table values (1)`);
+    await expect(db.asUser(ALICE, () => db.query(`select * from public.later_table`))).rejects.toThrow(/permission denied/);
+    await expect(db.asUser(ALICE, () => db.query(`truncate public.later_table`))).rejects.toThrow(/permission denied/);
+    await db.exec(`drop table public.later_table`);
+  });
 });
 
 describe("categorisation", () => {

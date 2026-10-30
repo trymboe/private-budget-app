@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { serverEnv } from "@/lib/env";
+import { safeNextPath } from "@/lib/safe-redirect";
 import { createClient } from "@/lib/supabase/server";
 
 export type AuthState = { error?: string; message?: string } | undefined;
@@ -11,12 +12,6 @@ const credentials = z.object({
   email: z.email("Enter a valid email address.").max(254),
   password: z.string().min(10, "Use at least 10 characters.").max(128),
 });
-
-function safeNext(value: FormDataEntryValue | null): string {
-  const next = typeof value === "string" ? value : "";
-  // Only same-site relative paths; never "//evil.com".
-  return next.startsWith("/") && !next.startsWith("//") ? next : "/";
-}
 
 export async function signIn(_: AuthState, formData: FormData): Promise<AuthState> {
   const parsed = credentials.safeParse({ email: formData.get("email"), password: formData.get("password") });
@@ -28,7 +23,7 @@ export async function signIn(_: AuthState, formData: FormData): Promise<AuthStat
       error: error.code === "email_not_confirmed" ? "Confirm your email first. Check your inbox." : "Email or password is incorrect.",
     };
   }
-  redirect(safeNext(formData.get("next")));
+  redirect(safeNextPath(formData.get("next")));
 }
 
 export async function signUp(_: AuthState, formData: FormData): Promise<AuthState> {
