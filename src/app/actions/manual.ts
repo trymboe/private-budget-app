@@ -8,11 +8,13 @@ import { getProfile } from "@/lib/data/queries";
 import { normalizeMerchant } from "@/lib/merchant";
 import { parseDecimalToMinor } from "@/lib/money";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getActiveSpace } from "@/lib/spaces";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "./transactions";
 
 // Transactions the user enters by hand (cash, Vipps from another phone, etc.).
-// They live in one "manual" account per user. Users have no insert or delete rights
+// They live in one "manual" account per user and space (private or shared), so
+// cash spent on the household can be added to the shared space. Users have no insert or delete rights
 // on transactions under RLS, so these writes go through the server-only client,
 // always scoped to the signed-in user and to the manual account.
 
@@ -51,16 +53,21 @@ function failed(context: string, error: { message: string; code?: string } | nul
   return { ok: false, error: "That did not save. Please try again." };
 }
 
-/** The user's manual account, created on first use. */
-async function manualAccount(userId: string, currency: string): Promise<{ id: string; currency: string } | null> {
+/** The user's manual account in a space, created on first use. */
+async function manualAccount(
+  userId: string,
+  space: { id: string; kind: "personal" | "shared" },
+  currency: string,
+): Promise<{ id: string; currency: string; space_id: string } | null> {
   const admin = createAdminClient();
   const find = () =>
     admin
       .from("accounts")
-      .select("id, currency")
+      .select("id, currency, space_id")
       .eq("user_id", userId)
+      .eq("space_id", space.id)
       .eq("provider", "manual")
-      .eq("provider_identity", MANUAL_IDENTITY)
+      .limit(1)
       .maybeSingle();
   const { data: existing } = await find();
   if (existing) return existing;
@@ -68,8 +75,10 @@ async function manualAccount(userId: string, currency: string): Promise<{ id: st
     .from("accounts")
     .insert({
       user_id: userId,
+      space_id: space.id,
       provider: "manual",
-      provider_identity: MANUAL_IDENTITY,
+      // Unique per user: the personal one keeps the original identity.
+      provider_identity: space.kind === "personal" ? MANUAL_IDENTITY : `${MANUAL_IDENTITY}:${space.id}`,
       name: MANUAL_ACCOUNT_NAME,
       currency,
       is_synced: true,
@@ -77,7 +86,7 @@ async function manualAccount(userId: string, currency: string): Promise<{ id: st
       // Nothing to import, so never flag it as incomplete.
       initial_import_completed_at: new Date().toISOString(),
     })
-    .select("id, currency")
+    .select("id, currency, space_id")
     .single();
   if (created) return created;
   // Created by a parallel request in the meantime.
@@ -103,8 +112,8 @@ export async function addManualTransaction(input: z.input<typeof createSchema>):
   const user = await requireUser();
   const parsed = createSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Fill in an amount, a description and a date." };
-  const profile = await getProfile();
-  const account = await manualAccount(user.id, profile.currency);
+  const [profile, space] = await Promise.all([getProfile(), getActiveSpace()]);
+  const account = await manualAccount(user.id, space, profile.currency);
   if (!account) return { ok: false, error: "That did not save. Please try again." };
   const amount = signedAmount(parsed.data, account.currency);
   if (amount === null) return { ok: false, error: "Enter a valid amount." };
@@ -115,6 +124,7 @@ export async function addManualTransaction(input: z.input<typeof createSchema>):
     .insert({
       user_id: user.id,
       account_id: account.id,
+      space_id: account.space_id,
       fingerprint: `manual:${randomUUID()}`,
       status: "booked",
       ...dateFields(parsed.data.date),

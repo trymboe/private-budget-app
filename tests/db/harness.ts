@@ -53,11 +53,23 @@ export async function createUser(db: PGlite, id: string) {
   await db.query(`insert into auth.users (id, email) values ($1, $2)`, [id, `${id.slice(0, 8)}@test.local`]);
 }
 
-export async function createAccount(db: PGlite, userId: string, name = "Brukskonto", includeInBudget = true) {
+/** The user's personal space, created on sign-up. */
+export async function personalSpace(db: PGlite, userId: string) {
+  const { rows } = await db.query<{ id: string }>(`select id from public.spaces where personal_user_id = $1`, [userId]);
+  return rows[0].id;
+}
+
+export async function createAccount(
+  db: PGlite,
+  userId: string,
+  name = "Brukskonto",
+  includeInBudget = true,
+  spaceId?: string,
+) {
   const { rows } = await db.query<{ id: string }>(
-    `insert into public.accounts (user_id, provider, name, include_in_budget)
-     values ($1, 'demo', $2, $3) returning id`,
-    [userId, name, includeInBudget],
+    `insert into public.accounts (user_id, space_id, provider, name, include_in_budget)
+     values ($1, $2, 'demo', $3, $4) returning id`,
+    [userId, spaceId ?? (await personalSpace(db, userId)), name, includeInBudget],
   );
   return rows[0].id;
 }
@@ -74,8 +86,8 @@ export async function createTransaction(
   const date = opts.date ?? "2026-10-15";
   const { rows } = await db.query<{ id: string }>(
     `insert into public.transactions
-       (user_id, account_id, fingerprint, status, booking_date, effective_date, amount_minor, currency, merchant_key)
-     values ($1, $2, $3, $4, $5, $5, $6, 'NOK', $7) returning id`,
+       (user_id, account_id, space_id, fingerprint, status, booking_date, effective_date, amount_minor, currency, merchant_key)
+     values ($1, $2, (select space_id from public.accounts where id = $2), $3, $4, $5, $5, $6, 'NOK', $7) returning id`,
     [userId, accountId, `fp-${seq}`, opts.status ?? "booked", date, amountMinor, opts.merchantKey ?? null],
   );
   return rows[0].id;

@@ -59,6 +59,7 @@ function failure(code: SyncErrorCode): SyncOutcome {
 type AccountRow = {
   id: string;
   user_id: string;
+  space_id: string;
   connection_id: string | null;
   provider: ProviderId | "manual";
   provider_account_uid: string | null;
@@ -87,7 +88,7 @@ export async function syncAccount(input: {
   const { data: account } = await db
     .from("accounts")
     .select(
-      `id, user_id, connection_id, provider, provider_account_uid, currency, is_synced, history_requested_from,
+      `id, user_id, space_id, connection_id, provider, provider_account_uid, currency, is_synced, history_requested_from,
        initial_import_completed_at, last_synced_at,
        bank_connections ( id, status, session_secret, consent_valid_until, rate_limited_until )`,
     )
@@ -215,8 +216,9 @@ export async function syncAccount(input: {
     if (truncated) plan.removals = [];
 
     // 4. Write.
-    const rules = await loadRules(db, input.userId);
-    const inserted = await insertTransactions(db, input.userId, account.id, plan.inserts, rules);
+    // Rules belong to the space the account is in (private or shared).
+    const rules = await loadRules(db, account.space_id);
+    const inserted = await insertTransactions(db, input.userId, account, plan.inserts, rules);
     let updated = 0;
     const seenIds: string[] = [];
     for (const u of plan.updates) {
@@ -369,15 +371,15 @@ function isUnchanged(s: StoredTransaction | undefined, t: IncomingTransaction): 
   );
 }
 
-async function loadRules(db: SupabaseClient, userId: string) {
-  const { data } = await db.from("categorization_rules").select("merchant_key, category_id").eq("user_id", userId);
+async function loadRules(db: SupabaseClient, spaceId: string) {
+  const { data } = await db.from("categorization_rules").select("merchant_key, category_id").eq("space_id", spaceId);
   return new Map((data ?? []).map((r) => [r.merchant_key as string, r.category_id as string]));
 }
 
 async function insertTransactions(
   db: SupabaseClient,
   userId: string,
-  accountId: string,
+  account: { id: string; space_id: string },
   items: IncomingTransaction[],
   rules: Map<string, string>,
 ): Promise<number> {
@@ -386,7 +388,8 @@ async function insertTransactions(
     const suggestion = t.merchantKey ? rules.get(t.merchantKey) : undefined;
     return {
       user_id: userId,
-      account_id: accountId,
+      account_id: account.id,
+      space_id: account.space_id,
       ...bankFields(t),
       suggested_category_id: suggestion ?? null,
       suggested_treatment: suggestion ? "budget" : null,

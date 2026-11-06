@@ -1,11 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { FieldError, Input, Label } from "@/components/ui/field";
 import { updatePassword, type PasswordState } from "./actions";
 
-export function PasswordForm() {
+export function PasswordForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState<PasswordState, FormData>(updatePassword, undefined);
   return (
     <form action={action} className="max-w-sm space-y-5">
@@ -20,9 +21,15 @@ export function PasswordForm() {
           {state.message}
         </p>
       ) : null}
-      <Button type="submit" size="lg" disabled={pending}>
-        {pending ? "Saving…" : "Save password"}
-      </Button>
+      {state?.message && next ? (
+        <Button asChild size="lg">
+          <Link href={next}>Continue</Link>
+        </Button>
+      ) : (
+        <Button type="submit" size="lg" disabled={pending}>
+          {pending ? "Saving…" : "Save password"}
+        </Button>
+      )}
     </form>
   );
 }

@@ -84,15 +84,14 @@ export async function undoReview(transactionIds: string[]): Promise<ActionResult
 }
 
 export async function saveNote(transactionId: string, note: string): Promise<ActionResult> {
-  const user = await requireUser();
+  await requireUser();
   const parsed = z.object({ id: uuid, note: z.string().max(1000) }).safeParse({ id: transactionId, note });
   if (!parsed.success) return { ok: false, error: "Notes can be up to 1000 characters." };
   const supabase = await createClient();
   const { error } = await supabase
     .from("transactions")
     .update({ note: parsed.data.note.trim() || null })
-    .eq("id", parsed.data.id)
-    .eq("user_id", user.id);
+    .eq("id", parsed.data.id);
   return error ? failed("note", error) : done();
 }
 

@@ -2,6 +2,7 @@ import "server-only";
 import { requireUser } from "@/lib/auth";
 import { budgetPerformance, type MonthPerformance } from "@/lib/budget";
 import { addMonths, daysInMonth, diffDays, monthStart, type IsoDate } from "@/lib/dates";
+import { getActiveSpace } from "@/lib/spaces";
 import { createClient } from "@/lib/supabase/server";
 import { getCategories, getConnections, getToday, isMonthPartial } from "./queries";
 import type { Category } from "./types";
@@ -26,18 +27,24 @@ const MONTHS = 12;
 export async function getInsights(): Promise<Insights> {
   await requireUser();
   const supabase = await createClient();
-  const [today, categories, connections] = await Promise.all([getToday(), getCategories(), getConnections()]);
+  const [today, categories, connections, space] = await Promise.all([getToday(), getCategories(), getConnections(), getActiveSpace()]);
   const current = monthStart(today);
   const first = addMonths(current, -(MONTHS - 1));
   const previous = addMonths(current, -1);
 
   const [totals, budgets, flows, daily] = await Promise.all([
-    supabase.from("monthly_category_totals").select("month, category_id, net_minor").gte("month", first),
-    supabase.from("monthly_budgets").select("month, category_id, amount_minor").gte("month", first).lte("month", current),
-    supabase.from("monthly_cash_flow").select("month, inflow_minor, outflow_minor").gte("month", first),
+    supabase.from("monthly_category_totals").select("month, category_id, net_minor").eq("space_id", space.id).gte("month", first),
+    supabase
+      .from("monthly_budgets")
+      .select("month, category_id, amount_minor")
+      .eq("space_id", space.id)
+      .gte("month", first)
+      .lte("month", current),
+    supabase.from("monthly_cash_flow").select("month, inflow_minor, outflow_minor").eq("space_id", space.id).gte("month", first),
     supabase
       .from("transaction_allocations")
       .select("category_id, amount_minor, transactions!inner ( effective_date, treatment, removed_at, accounts!inner ( include_in_budget ) )")
+      .eq("space_id", space.id)
       .gte("transactions.effective_date", previous)
       .eq("transactions.treatment", "budget")
       .is("transactions.removed_at", null)

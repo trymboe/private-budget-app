@@ -38,11 +38,15 @@ export type TransactionListItem = {
   isDemo: boolean;
   /** Entered by hand (not from a bank), so the user may edit or delete it. */
   isManual: boolean;
+  /** Came from the signed-in user's own bank or hand entry (not their partner's). */
+  isMine: boolean;
   accountIncluded: boolean;
 };
 
 export type ConnectionSummary = {
   id: string;
+  /** The signed-in user approved this connection; only they can sync, renew or disconnect it. */
+  isMine: boolean;
   provider: "enable_banking" | "demo" | "manual";
   institutionName: string;
   status: "active" | "expired" | "revoked" | "error";
@@ -67,4 +71,7 @@ export type AccountSummary = {
   lastSyncedAt: string | null;
   balanceMinor: Minor | null;
   provider: string;
+  spaceId: string;
+  /** Owned by the signed-in user: only they can rename, toggle, move or remove it. */
+  isMine: boolean;
 };

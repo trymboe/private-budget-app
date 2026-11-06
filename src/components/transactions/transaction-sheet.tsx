@@ -232,7 +232,7 @@ function TransactionDetails({
             />
           </div>
 
-          {tx.isManual ? (
+          {tx.isManual && tx.isMine ? (
             <div className="grid grid-cols-2 gap-2">
               <Button variant="secondary" onClick={() => setMode("edit")} disabled={pending}>
                 Edit
