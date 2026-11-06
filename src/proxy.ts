@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 // visitors on the public pages. Authorisation itself is enforced again on the
 // server (requireUser) and in the database (RLS); this is only the first gate.
 
-const PUBLIC_PATHS = ["/login", "/signup", "/auth", "/api/cron", "/api/bank/callback", "/offline"];
+const PUBLIC_PATHS = ["/login", "/signup", "/join", "/auth", "/api/cron", "/api/bank/callback", "/offline"];
 
 export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });

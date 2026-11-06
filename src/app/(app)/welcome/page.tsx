@@ -4,19 +4,24 @@ import { WelcomeSteps } from "@/components/onboarding/welcome-steps";
 import { getCategories, getConnections, getMonthBudgets, getProfile, getToday } from "@/lib/data/queries";
 import { monthStart } from "@/lib/dates";
 import { Logo } from "@/components/logo";
+import { getActiveSpace } from "@/lib/spaces";
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Welcome" };
 
 export default async function WelcomePage() {
-  const [profile, today] = await Promise.all([getProfile(), getToday()]);
+  const [profile, today, space] = await Promise.all([getProfile(), getToday(), getActiveSpace()]);
   let categories = await getCategories();
   if (categories.length === 0) {
     // First visit: start from a sensible, fully editable set. (getCategories is
     // cached for this request, so read the fresh rows directly.)
     const supabase = await createClient();
-    await supabase.rpc("create_starter_categories");
-    const { data } = await supabase.from("categories").select("id, name, kind, icon, color, is_fixed, sort_order, archived_at").order("sort_order");
+    await supabase.rpc("create_starter_categories", { p_space: space.id });
+    const { data } = await supabase
+      .from("categories")
+      .select("id, name, kind, icon, color, is_fixed, sort_order, archived_at")
+      .eq("space_id", space.id)
+      .order("sort_order");
     categories = (data ?? []).map((r) => ({
       id: r.id,
       name: r.name,
@@ -34,6 +39,7 @@ export default async function WelcomePage() {
   const { count } = await supabase
     .from("transactions")
     .select("id", { count: "exact", head: true })
+    .eq("space_id", space.id)
     .eq("needs_review", true)
     .is("removed_at", null);
 

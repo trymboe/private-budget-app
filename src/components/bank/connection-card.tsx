@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { disconnectBank, removeAccount, setAccountOptions, syncNow } from "@/app/actions/bank";
+import { moveAccount } from "@/app/actions/spaces";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import type { ConnectionSummary } from "@/lib/data/types";
@@ -19,14 +20,30 @@ function relative(ts: string | null, today: IsoDate) {
   return `${formatShortDate(ts.slice(0, 10))}`;
 }
 
-/** One bank connection: consent status, sync controls and its accounts. */
-export function ConnectionCard({ connection, today }: { connection: ConnectionSummary; today: IsoDate }) {
+export type Sharing = { sharedSpaceId: string; partnerName: string } | null;
+
+/**
+ * One bank connection: consent status, sync controls and its accounts. With a
+ * partner, each of your accounts can be private or shared; your partner's shared
+ * accounts are listed read-only.
+ */
+export function ConnectionCard({
+  connection,
+  today,
+  sharing = null,
+}: {
+  connection: ConnectionSummary;
+  today: IsoDate;
+  sharing?: Sharing;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [pending, startTransition] = useTransition();
   const c = connection;
   // Disconnected and hand-entered accounts have no bank access to show or manage.
   const isOrphan = c.id === "disconnected" || c.id === "manual";
+  // Your partner's bank: you can see its shared accounts, but not manage it.
+  const readOnly = !c.isMine;
   const consentDays = c.consentValidUntil ? diffDays(c.consentValidUntil.slice(0, 10), today) : null;
 
   const statusLine =
@@ -50,8 +67,11 @@ export function ConnectionCard({ connection, today }: { connection: ConnectionSu
             {c.institutionName}
             {c.provider === "demo" ? <span className="ml-2 align-middle text-2xs font-medium text-ochre">DEMO DATA</span> : null}
           </h2>
+          {readOnly ? <p className="mt-1 text-xs text-ink-3">Connected by {sharing?.partnerName ?? "your partner"}</p> : null}
           {!isOrphan ? (
-            <p className={cn("mt-1 text-xs", c.status === "active" && (consentDays ?? 99) > 14 ? "text-ink-2" : "text-ochre")}>{statusLine}</p>
+            <p className={cn("mt-1 text-xs", c.status === "active" && (consentDays ?? 99) > 14 ? "text-ink-2" : "text-ochre")}>
+              {statusLine}
+            </p>
           ) : null}
           {!isOrphan && c.status === "active" ? (
             <p className="mt-0.5 text-xs text-ink-3">
@@ -61,7 +81,7 @@ export function ConnectionCard({ connection, today }: { connection: ConnectionSu
             </p>
           ) : null}
         </div>
-        {!isOrphan ? (
+        {!isOrphan && !readOnly ? (
           <div className="flex shrink-0 gap-1">
             {c.status === "active" ? (
               <Button
@@ -96,72 +116,112 @@ export function ConnectionCard({ connection, today }: { connection: ConnectionSu
                 <p className="truncate text-sm font-medium">{a.name}</p>
                 <p className="text-2xs text-ink-3">
                   {a.ibanMasked ?? a.currency}
-                  {a.historyAvailableFrom ? ` · history from ${formatShortDate(a.historyAvailableFrom)} ${a.historyAvailableFrom.slice(0, 4)}` : ""}
+                  {a.historyAvailableFrom
+                    ? ` · history from ${formatShortDate(a.historyAvailableFrom)} ${a.historyAvailableFrom.slice(0, 4)}`
+                    : ""}
                   {a.historyLimited ? " (limited by bank)" : ""}
                   {!a.initialImportCompletedAt && a.isSynced ? " · import not finished" : ""}
                 </p>
               </div>
               {a.balanceMinor !== null ? (
-                <p className="tnum shrink-0 text-sm text-ink-2">{formatMoney(a.balanceMinor, a.currency, { decimals: "never" })}</p>
+                <p className="tnum shrink-0 text-sm text-ink-2">
+                  {formatMoney(a.balanceMinor, a.currency, {
+                    decimals: "never",
+                  })}
+                </p>
               ) : null}
             </div>
-            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
-              <Toggle
-                label="Count toward budget"
-                checked={a.includeInBudget}
-                disabled={pending}
-                onChange={(v) =>
-                  startTransition(async () => {
-                    const r = await setAccountOptions(a.id, { includeInBudget: v });
-                    if (!r.ok) toast({ message: r.error, tone: "error" });
-                    router.refresh();
-                  })
-                }
-              />
-              {!isOrphan ? (
+            {!a.isMine ? (
+              <p className="mt-1 text-2xs text-ink-3">Shared by {sharing?.partnerName ?? "your partner"}</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
+                {sharing && a.provider !== "manual" ? (
+                  <Toggle
+                    label={`Shared with ${sharing.partnerName}`}
+                    checked={a.spaceId === sharing.sharedSpaceId}
+                    disabled={pending}
+                    onChange={(v) => {
+                      const message = v
+                        ? `Share ${a.name} with ${sharing.partnerName}? You will both see all of its transactions in Shared, and it counts toward the shared budget. Categories you set on it go back to review, because Shared has its own categories.`
+                        : `Make ${a.name} private again? ${sharing.partnerName} will no longer see it. Its transactions go back to review in your own budget.`;
+                      if (!confirm(message)) return;
+                      startTransition(async () => {
+                        const r = await moveAccount(a.id, v ? "shared" : "personal");
+                        toast(
+                          r.ok
+                            ? {
+                                message: v ? `${a.name} is now shared` : `${a.name} is now private`,
+                              }
+                            : { message: r.error, tone: "error" },
+                        );
+                        router.refresh();
+                      });
+                    }}
+                  />
+                ) : null}
                 <Toggle
-                  label="Keep syncing"
-                  checked={a.isSynced}
+                  label="Count toward budget"
+                  checked={a.includeInBudget}
                   disabled={pending}
                   onChange={(v) =>
                     startTransition(async () => {
-                      const r = await setAccountOptions(a.id, { isSynced: v });
+                      const r = await setAccountOptions(a.id, {
+                        includeInBudget: v,
+                      });
                       if (!r.ok) toast({ message: r.error, tone: "error" });
                       router.refresh();
                     })
                   }
                 />
-              ) : null}
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => {
-                  if (
-                    !confirm(
-                      `Remove ${a.name}? All of its transactions and their categories are deleted for good, and your budgets update to match. This cannot be undone.`,
+                {!isOrphan ? (
+                  <Toggle
+                    label="Keep syncing"
+                    checked={a.isSynced}
+                    disabled={pending}
+                    onChange={(v) =>
+                      startTransition(async () => {
+                        const r = await setAccountOptions(a.id, {
+                          isSynced: v,
+                        });
+                        if (!r.ok) toast({ message: r.error, tone: "error" });
+                        router.refresh();
+                      })
+                    }
+                  />
+                ) : null}
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    if (
+                      !confirm(
+                        `Remove ${a.name}? All of its transactions and their categories are deleted for good, and your budgets update to match. This cannot be undone.`,
+                      )
                     )
-                  )
-                    return;
-                  startTransition(async () => {
-                    const r = await removeAccount(a.id);
-                    toast(
-                      r.ok
-                        ? { message: `Removed ${a.name} and ${r.removed ?? 0} ${r.removed === 1 ? "transaction" : "transactions"}` }
-                        : { message: r.error, tone: "error" },
-                    );
-                    router.refresh();
-                  });
-                }}
-                className="ml-auto text-xs text-ink-3 underline-offset-4 hover:text-brick hover:underline"
-              >
-                Remove
-              </button>
-            </div>
+                      return;
+                    startTransition(async () => {
+                      const r = await removeAccount(a.id);
+                      toast(
+                        r.ok
+                          ? {
+                              message: `Removed ${a.name} and ${r.removed ?? 0} ${r.removed === 1 ? "transaction" : "transactions"}`,
+                            }
+                          : { message: r.error, tone: "error" },
+                      );
+                      router.refresh();
+                    });
+                  }}
+                  className="ml-auto text-xs text-ink-3 underline-offset-4 hover:text-brick hover:underline"
+                >
+                  Remove
+                </button>
+              </div>
+            )}
           </li>
         ))}
       </ul>
 
-      {!isOrphan && c.status === "active" ? (
+      {!isOrphan && !readOnly && c.status === "active" ? (
         <button
           type="button"
           disabled={pending}
@@ -182,10 +242,26 @@ export function ConnectionCard({ connection, today }: { connection: ConnectionSu
   );
 }
 
-function Toggle({ label, checked, onChange, disabled }: { label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+function Toggle({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  disabled?: boolean;
+}) {
   return (
     <label className="flex cursor-pointer items-center gap-2 text-xs text-ink-2">
-      <input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} className="size-4 accent-[var(--ink)]" />
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.checked)}
+        className="size-4 accent-[var(--ink)]"
+      />
       {label}
     </label>
   );

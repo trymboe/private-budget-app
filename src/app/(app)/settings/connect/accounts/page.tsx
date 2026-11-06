@@ -3,14 +3,16 @@ import { notFound } from "next/navigation";
 import { AccountImport } from "@/components/bank/account-import";
 import { Page, PageHeader } from "@/components/page";
 import { getConnections, getProfile } from "@/lib/data/queries";
+import { getSharedSpace, partnerOf } from "@/lib/spaces";
 
 export const metadata: Metadata = { title: "Choose accounts" };
 
 export default async function ChooseAccountsPage({ searchParams }: { searchParams: Promise<{ connection?: string }> }) {
   const { connection: id } = await searchParams;
-  const [connections, profile] = await Promise.all([getConnections(), getProfile()]);
-  const connection = connections.find((c) => c.id === id);
+  const [connections, profile, shared] = await Promise.all([getConnections("all"), getProfile(), getSharedSpace()]);
+  const connection = connections.find((c) => c.id === id && c.isMine);
   if (!connection) notFound();
+  const partner = partnerOf(shared);
 
   return (
     <Page>
@@ -23,6 +25,7 @@ export default async function ChooseAccountsPage({ searchParams }: { searchParam
         accounts={connection.accounts}
         requestedFrom={connection.accounts[0]?.historyRequestedFrom ?? null}
         nextHref={profile.onboarding.budget ? "/review" : "/welcome"}
+        sharing={shared && partner ? { sharedSpaceId: shared.id, partnerName: partner.name ?? "your partner" } : null}
       />
     </Page>
   );

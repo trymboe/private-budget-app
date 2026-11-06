@@ -1,6 +1,6 @@
 # Architecture
 
-Måte is a single-person budgeting app. It reads transactions from your bank,
+Måte is a personal budgeting app for one person or a couple. It reads transactions from your bank,
 asks you to categorise each one once (one tap, usually confirming a suggestion), and
 compares spending to a monthly budget. It is built to be honest about what it does
 not know: incomplete months, pending items, uncategorised spending and other
@@ -83,8 +83,29 @@ tests/db/              database tests on PGlite
 
 ## Data model
 
-All tables have `user_id` and RLS `user_id = auth.uid()`. Composite foreign keys
-`(id, user_id)` make it impossible to reference another user's row.
+Data is organised in **spaces**. Every person has a personal space only they can
+see; a couple can add one shared space that both belong to (`spaces`,
+`space_members`, at most two people, one shared space per person). Accounts,
+transactions, categories, budgets, merchant rules and allocations each carry a
+`space_id`, and RLS is `space_id in (select my_space_ids())`. Composite foreign keys
+`(id, space_id)` make it impossible to reference a row in another space, so a
+shared category can never be put on a private transaction.
+
+- Bank connections stay personal (`user_id`): the person who approved with BankID
+  owns them. Each account is put in a space by its owner (`move_account_to_space`),
+  so a joint account can be shared while the rest stay private. Moving an account
+  moves its transactions; their categories go back to review, because categories
+  belong to a space.
+- `accounts.user_id` and `transactions.user_id` say whose bank the data came from.
+  Only that person can rename or toggle an account, or move it.
+- Your partner can see a connection's status only when one of its accounts is shared,
+  and never its encrypted session.
+- Membership is changed only by the server. Settings → Sharing creates the partner's
+  account and a one-time sign-in link to pass on (works with public sign-ups off);
+  the link opens `/join`, which signs in only when the button is pressed, so chat
+  link previews cannot use it up.
+- The app shows one space at a time (Mine / Shared switcher, remembered in a cookie
+  that is checked against membership).
 
 - `profiles`: time zone (default `Europe/Oslo`), onboarding state.
 - `bank_connections`: one bank consent. `session_secret` is the Enable Banking

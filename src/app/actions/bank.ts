@@ -13,6 +13,7 @@ import { getProfile } from "@/lib/data/queries";
 import { serverEnv } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { moveAccount } from "./spaces";
 import type { ActionResult } from "./transactions";
 
 const MAX_CONSENT_DAYS = 180;
@@ -105,7 +106,9 @@ export async function startBankConnection(_: StartState, formData: FormData): Pr
 
 const selectionSchema = z.object({
   connectionId: z.uuid(),
-  accounts: z.array(z.object({ id: z.uuid(), isSynced: z.boolean(), includeInBudget: z.boolean() })).max(50),
+  accounts: z
+    .array(z.object({ id: z.uuid(), isSynced: z.boolean(), includeInBudget: z.boolean(), shared: z.boolean().optional() }))
+    .max(50),
 });
 
 export async function saveAccountSelection(input: z.input<typeof selectionSchema>): Promise<ActionResult> {
@@ -121,6 +124,10 @@ export async function saveAccountSelection(input: z.input<typeof selectionSchema
       .eq("connection_id", parsed.data.connectionId)
       .eq("user_id", user.id);
     if (error) return { ok: false, error: "Could not save your choice." };
+    if (a.shared !== undefined) {
+      const moved = await moveAccount(a.id, a.shared ? "shared" : "personal");
+      if (!moved.ok) return moved;
+    }
   }
   await supabase.from("profiles").update({ onboarding_bank_at: new Date().toISOString() }).eq("id", user.id);
   revalidatePath("/", "layout");
@@ -153,6 +160,7 @@ export async function syncNow(connectionId: string): Promise<ActionResult & { me
     .from("bank_connections")
     .select("id, status, last_synced_at, rate_limited_until")
     .eq("id", connectionId)
+    .eq("user_id", user.id)
     .maybeSingle();
   if (!conn) return { ok: false, error: "Connection not found." };
   if (conn.status !== "active") return { ok: false, error: "Reconnect this bank first." };

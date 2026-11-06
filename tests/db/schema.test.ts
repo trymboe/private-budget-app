@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { createAccount, createDb, createTransaction, createUser, type Db } from "./harness";
+import { createAccount, createDb, createTransaction, createUser, personalSpace, type Db } from "./harness";
 
 const ALICE = "00000000-0000-4000-8000-00000000a11c";
 const BOB = "00000000-0000-4000-8000-000000000b0b";
@@ -7,10 +7,11 @@ const BOB = "00000000-0000-4000-8000-000000000b0b";
 let db: Db;
 
 async function starter(userId: string) {
-  await db.asUser(userId, () => db.query(`select public.create_starter_categories()`));
+  const space = await personalSpace(db, userId);
+  await db.asUser(userId, () => db.query(`select public.create_starter_categories($1)`, [space]));
   const { rows } = await db.query<{ id: string; name: string }>(
-    `select id, name from public.categories where user_id = $1`,
-    [userId],
+    `select id, name from public.categories where space_id = $1`,
+    [space],
   );
   return Object.fromEntries(rows.map((r) => [r.name, r.id]));
 }
@@ -40,7 +41,7 @@ describe("row level security", () => {
     const seen = await db.asUser(ALICE, async () => ({
       tx: (await db.query(`select * from public.transactions`)).rows.length,
       accounts: (await db.query(`select * from public.accounts`)).rows.length,
-      categories: (await db.query(`select * from public.categories where user_id = '${BOB}'`)).rows.length,
+      categories: (await db.query(`select * from public.categories`)).rows.length,
     }));
     expect(seen).toEqual({ tx: 0, accounts: 0, categories: 0 });
   });
@@ -83,12 +84,13 @@ describe("row level security", () => {
     const bobCats = await starter(BOB);
     const account = await createAccount(db, ALICE);
     const tx = await createTransaction(db, ALICE, account, -1_000);
+    const aliceSpace = await personalSpace(db, ALICE);
     await expect(
       db.asUser(ALICE, () =>
         db.query(
-          `insert into public.transaction_allocations (user_id, transaction_id, category_id, amount_minor)
+          `insert into public.transaction_allocations (space_id, transaction_id, category_id, amount_minor)
            values ($1, $2, $3, -1000)`,
-          [ALICE, tx, bobCats["Groceries"]],
+          [aliceSpace, tx, bobCats["Groceries"]],
         ),
       ),
     ).rejects.toThrow();
@@ -209,15 +211,16 @@ describe("budgets", () => {
     const user = "00000000-0000-4000-8000-0000000000c3";
     await createUser(db, user);
     const cats = await starter(user);
+    const space = await personalSpace(db, user);
     await db.asUser(user, () =>
       db.query(
-        `insert into public.monthly_budgets (user_id, category_id, month, amount_minor)
+        `insert into public.monthly_budgets (space_id, category_id, month, amount_minor)
          values ($1, $2, '2026-08-01', 400000), ($1, $3, '2026-08-01', 150000)`,
-        [user, cats["Groceries"], cats["Restaurants & cafés"]],
+        [space, cats["Groceries"], cats["Restaurants & cafés"]],
       ),
     );
     const created = await db.asUser(user, () =>
-      db.query<{ n: number }>(`select public.ensure_month_budget('2026-10-01') as n`),
+      db.query<{ n: number }>(`select public.ensure_month_budget($1, '2026-10-01') as n`, [space]),
     );
     expect(created.rows[0].n).toBe(2);
 
@@ -236,7 +239,7 @@ describe("budgets", () => {
 
     // A second ensure is a no-op.
     const again = await db.asUser(user, () =>
-      db.query<{ n: number }>(`select public.ensure_month_budget('2026-10-01') as n`),
+      db.query<{ n: number }>(`select public.ensure_month_budget($1, '2026-10-01') as n`, [space]),
     );
     expect(again.rows[0].n).toBe(0);
   });
@@ -245,25 +248,27 @@ describe("budgets", () => {
     const user = "00000000-0000-4000-8000-0000000000f6";
     await createUser(db, user);
     const cats = await starter(user);
+    const space = await personalSpace(db, user);
 
     // What PostgREST's upsert sends: it also updates the key columns, which the
     // browser role may not do. This is the "That did not save" bug.
     await expect(
       db.asUser(user, () =>
         db.query(
-          `insert into public.monthly_budgets (user_id, category_id, month, amount_minor)
+          `insert into public.monthly_budgets (space_id, category_id, month, amount_minor)
            values ($1, $2, '2026-10-01', 400000)
-           on conflict (user_id, category_id, month) do update set
-             user_id = excluded.user_id, category_id = excluded.category_id,
+           on conflict (space_id, category_id, month) do update set
+             space_id = excluded.space_id, category_id = excluded.category_id,
              month = excluded.month, amount_minor = excluded.amount_minor`,
-          [user, cats["Groceries"]],
+          [space, cats["Groceries"]],
         ),
       ),
     ).rejects.toThrow(/permission denied/);
 
     const save = (amounts: Record<string, number>) =>
       db.asUser(user, () =>
-        db.query<{ n: number }>(`select public.set_month_budgets('2026-10-01', $1::jsonb) as n`, [
+        db.query<{ n: number }>(`select public.set_month_budgets($1, '2026-10-01', $2::jsonb) as n`, [
+          space,
           JSON.stringify(amounts),
         ]),
       );
@@ -271,8 +276,8 @@ describe("budgets", () => {
     expect((await save({ [cats["Groceries"]]: 500000 })).rows[0].n).toBe(1);
 
     const { rows } = await db.query<{ category_id: string; amount_minor: string }>(
-      `select category_id, amount_minor from public.monthly_budgets where user_id = $1 and month = '2026-10-01'`,
-      [user],
+      `select category_id, amount_minor from public.monthly_budgets where space_id = $1 and month = '2026-10-01'`,
+      [space],
     );
     const byCategory = Object.fromEntries(rows.map((r) => [r.category_id, Number(r.amount_minor)]));
     expect(byCategory).toEqual({ [cats["Groceries"]]: 500000, [cats["Transport"]]: 90000 });
@@ -288,14 +293,15 @@ describe("budgets", () => {
     const cats = await starter(user);
     const account = await createAccount(db, user);
     const tx = await createTransaction(db, user, account, -30_000, { date: "2026-09-10" });
+    const space = await personalSpace(db, user);
     await db.asUser(user, () =>
       db.query(`select public.categorize_transactions($1::uuid[], $2, false)`, [[tx], cats["Entertainment"]]),
     );
     await db.asUser(user, () =>
       db.query(
-        `insert into public.monthly_budgets (user_id, category_id, month, amount_minor)
+        `insert into public.monthly_budgets (space_id, category_id, month, amount_minor)
          values ($1, $2, '2026-09-01', 100000), ($1, $3, '2026-09-01', 50000)`,
-        [user, cats["Entertainment"], cats["Shopping"]],
+        [space, cats["Entertainment"], cats["Shopping"]],
       ),
     );
     await db.asUser(user, () => db.query(`select public.merge_categories($1, $2)`, [cats["Entertainment"], cats["Shopping"]]));
@@ -356,7 +362,8 @@ describe("removing an account", () => {
     const txs = await db.query<{ id: string }>(`select id from public.transactions where user_id = $1`, [user]);
     expect(txs.rows.map((r) => r.id)).toEqual([kept]);
     const allocs = await db.query<{ transaction_id: string }>(
-      `select transaction_id from public.transaction_allocations where user_id = $1`,
+      `select a.transaction_id from public.transaction_allocations a
+         join public.transactions t on t.id = a.transaction_id where t.user_id = $1`,
       [user],
     );
     expect(allocs.rows.map((r) => r.transaction_id)).toEqual([kept]);
@@ -371,8 +378,9 @@ describe("manual transactions", () => {
     // What the server action creates on first use; one manual account per user.
     const insertManual = () =>
       db.query<{ id: string }>(
-        `insert into public.accounts (user_id, provider, provider_identity, name, initial_import_completed_at)
-         values ($1, 'manual', 'manual', 'Cash & manual', now()) returning id`,
+        `insert into public.accounts (user_id, space_id, provider, provider_identity, name, initial_import_completed_at)
+         values ($1, (select id from public.spaces where personal_user_id = $1), 'manual', 'manual', 'Cash & manual', now())
+         returning id`,
         [user],
       );
     const account = (await insertManual()).rows[0].id;
@@ -400,7 +408,7 @@ describe("manual transactions", () => {
     expect(alloc.rows.map((r) => Number(r.amount_minor))).toEqual([-7_500]);
 
     await db.query(`delete from public.transactions where id = $1 and user_id = $2`, [tx, user]);
-    const left = await db.query(`select 1 from public.transaction_allocations where user_id = $1`, [user]);
+    const left = await db.query(`select 1 from public.transaction_allocations where transaction_id = $1`, [tx]);
     expect(left.rows).toHaveLength(0);
   });
 });

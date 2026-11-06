@@ -54,14 +54,15 @@ export function BottomNav({ reviewCount }: { reviewCount: number }) {
 }
 
 /** Sidebar on large screens: the same four destinations plus settings. */
-export function SideNav({ reviewCount, email }: { reviewCount: number; email: string | null }) {
+export function SideNav({ reviewCount, email, switcher }: { reviewCount: number; email: string | null; switcher?: React.ReactNode }) {
   const pathname = usePathname();
   return (
     <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r border-line px-4 py-8 lg:flex">
       <Link href="/" className="px-3">
         <Logo />
       </Link>
-      <nav aria-label="Main" className="mt-10">
+      {switcher ? <div className="mt-8">{switcher}</div> : null}
+      <nav aria-label="Main" className={switcher ? "mt-6" : "mt-10"}>
         <ul className="space-y-0.5">
           {ITEMS.map(({ href, label, icon: Icon }) => {
             const active = isActive(pathname, href);

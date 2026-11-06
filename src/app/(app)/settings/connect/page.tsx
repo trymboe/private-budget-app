@@ -17,7 +17,7 @@ const ERRORS: Record<string, string> = {
 
 export default async function ConnectPage({ searchParams }: { searchParams: Promise<{ error?: string; reconnect?: string }> }) {
   const { error, reconnect } = await searchParams;
-  const [today, connections] = await Promise.all([getToday(), getConnections()]);
+  const [today, connections] = await Promise.all([getToday(), getConnections("all")]);
   const providers = availableProviders();
 
   const institutions: InstitutionOption[] = [];

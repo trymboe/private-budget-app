@@ -26,15 +26,23 @@ export function AccountImport({
   accounts,
   requestedFrom,
   nextHref,
+  sharing = null,
 }: {
   connectionId: string;
   accounts: AccountSummary[];
   requestedFrom: string | null;
   nextHref: string;
+  /** Set when the user shares a space with a partner: each account can be shared. */
+  sharing?: { sharedSpaceId: string; partnerName: string } | null;
 }) {
   const router = useRouter();
   const [choices, setChoices] = useState(() =>
-    Object.fromEntries(accounts.map((a) => [a.id, { isSynced: a.isSynced, includeInBudget: a.includeInBudget }])),
+    Object.fromEntries(
+      accounts.map((a) => [
+        a.id,
+        { isSynced: a.isSynced, includeInBudget: a.includeInBudget, shared: sharing ? a.spaceId === sharing.sharedSpaceId : false },
+      ]),
+    ),
   );
   const [status, setStatus] = useState<Record<string, Status>>({});
   const [phase, setPhase] = useState<"choose" | "importing" | "finished">("choose");
@@ -44,7 +52,12 @@ export function AccountImport({
     setError(null);
     const saved = await saveAccountSelection({
       connectionId,
-      accounts: accounts.map((a) => ({ id: a.id, ...choices[a.id] })),
+      accounts: accounts.map((a) => ({
+        id: a.id,
+        isSynced: choices[a.id].isSynced,
+        includeInBudget: choices[a.id].includeInBudget,
+        ...(sharing ? { shared: choices[a.id].shared } : {}),
+      })),
     });
     if (!saved.ok) return setError(saved.error);
     setPhase("importing");
@@ -109,7 +122,18 @@ export function AccountImport({
                           onChange={(e) => setChoices((x) => ({ ...x, [a.id]: { ...c, includeInBudget: e.target.checked } }))}
                           className="size-4 accent-[var(--ink)]"
                         />
-                        Count toward my budget (turn off for savings)
+                        Count toward the budget (turn off for savings)
+                      </label>
+                    ) : null}
+                    {sharing && c.isSynced && phase === "choose" ? (
+                      <label className="mt-2 flex items-center gap-2 text-xs text-ink-2">
+                        <input
+                          type="checkbox"
+                          checked={c.shared}
+                          onChange={(e) => setChoices((x) => ({ ...x, [a.id]: { ...c, shared: e.target.checked } }))}
+                          className="size-4 accent-[var(--ink)]"
+                        />
+                        Shared with {sharing.partnerName} (a joint account). Otherwise only you see it.
                       </label>
                     ) : null}
                     <ImportStatus status={s} requestedFrom={requestedFrom} />

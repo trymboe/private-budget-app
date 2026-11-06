@@ -5,12 +5,15 @@ import { ConnectionCard } from "@/components/bank/connection-card";
 import { EmptyState, Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { getConnections, getToday } from "@/lib/data/queries";
+import { getSharedSpace, partnerOf } from "@/lib/spaces";
 
 export const metadata: Metadata = { title: "Accounts" };
 
 export default async function AccountsPage({ searchParams }: { searchParams: Promise<{ reconnected?: string }> }) {
   const { reconnected } = await searchParams;
-  const [connections, today] = await Promise.all([getConnections(), getToday()]);
+  const [connections, today, shared] = await Promise.all([getConnections("all"), getToday(), getSharedSpace()]);
+  const partner = partnerOf(shared);
+  const sharing = shared && partner ? { sharedSpaceId: shared.id, partnerName: partner.name ?? "your partner" } : null;
   return (
     <Page>
       <PageHeader
@@ -43,7 +46,7 @@ export default async function AccountsPage({ searchParams }: { searchParams: Pro
       ) : (
         <div className="space-y-10">
           {connections.map((c) => (
-            <ConnectionCard key={c.id} connection={c} today={today} />
+            <ConnectionCard key={c.id} connection={c} today={today} sharing={sharing} />
           ))}
         </div>
       )}

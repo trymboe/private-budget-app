@@ -6,12 +6,14 @@ import { Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { getConnections, getProfile } from "@/lib/data/queries";
 import { APP_NAME } from "@/lib/brand";
+import { getSharedSpace, partnerOf } from "@/lib/spaces";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const [profile, connections] = await Promise.all([getProfile(), getConnections()]);
-  const real = connections.filter((c) => c.id !== "disconnected" && c.id !== "manual");
+  const [profile, connections, shared] = await Promise.all([getProfile(), getConnections("all"), getSharedSpace()]);
+  const real = connections.filter((c) => c.id !== "disconnected" && c.id !== "manual" && c.isMine);
+  const partner = partnerOf(shared);
   const needsAttention = real.some((c) => c.status === "expired");
 
   const rows = [
@@ -21,6 +23,7 @@ export default async function SettingsPage() {
       detail: real.length === 0 ? "Not connected" : needsAttention ? "Needs renewing" : `${real.length} connected`,
       attention: needsAttention,
     },
+    { href: "/settings/sharing", label: "Sharing", detail: partner ? `With ${partner.name ?? "your partner"}` : "Invite your partner" },
     { href: "/budget/categories", label: "Categories", detail: "Names, colours, order" },
     { href: "/welcome", label: "Setup guide", detail: profile.onboarding.completed ? "Completed" : "In progress" },
     { href: "/settings/password", label: "Change password", detail: "" },

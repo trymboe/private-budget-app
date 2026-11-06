@@ -88,6 +88,10 @@ export async function GET(request: NextRequest) {
     connectionId = data.id;
   }
 
+  // New accounts start in the user's private space; they can share one afterwards.
+  const { data: personal } = await admin.from("spaces").select("id").eq("personal_user_id", user.id).single();
+  if (!personal) return back(request, "/settings/connect?error=save");
+
   // Re-attach known accounts by their stable identity; add new ones.
   const newAccountIds: string[] = [];
   for (const a of session.accounts) {
@@ -110,6 +114,7 @@ export async function GET(request: NextRequest) {
         .from("accounts")
         .insert({
           user_id: user.id,
+          space_id: personal.id,
           connection_id: connectionId,
           provider: auth.provider,
           provider_account_uid: a.uid,

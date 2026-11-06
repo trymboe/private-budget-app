@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { CATEGORY_COLORS, CATEGORY_ICONS } from "@/components/category-icon";
 import { parseDecimalToMinor } from "@/lib/money";
+import { getActiveSpace } from "@/lib/spaces";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "./transactions";
 
@@ -34,8 +35,9 @@ export async function setCategoryBudget(categoryId: string, monthStart: string, 
   }
   if (minor < 0 || minor >= 100_000_000_000) return { ok: false, error: "Enter a positive amount." };
 
-  const supabase = await createClient();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   const { error } = await supabase.rpc("set_month_budgets", {
+    p_space: space.id,
     p_month: parsed.data.month,
     p_amounts: { [parsed.data.categoryId]: minor },
   });
@@ -46,8 +48,9 @@ export async function copyBudget(fromMonth: string, toMonth: string, overwrite: 
   await requireUser();
   const parsed = z.object({ from: month, to: month, overwrite: z.boolean() }).safeParse({ from: fromMonth, to: toMonth, overwrite });
   if (!parsed.success) return { ok: false, error: "Invalid request." };
-  const supabase = await createClient();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   const { error } = await supabase.rpc("copy_month_budget", {
+    p_space: space.id,
     p_from: parsed.data.from,
     p_to: parsed.data.to,
     p_overwrite: parsed.data.overwrite,
@@ -66,20 +69,21 @@ const categoryInput = z.object({
 export type CategoryInput = { name: string; kind: "expense" | "income"; icon: string; color: string; isFixed: boolean };
 
 export async function createCategory(input: CategoryInput): Promise<ActionResult & { id?: string }> {
-  const user = await requireUser();
+  await requireUser();
   const parsed = categoryInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid category." };
-  const supabase = await createClient();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   const { data: last } = await supabase
     .from("categories")
     .select("sort_order")
+    .eq("space_id", space.id)
     .order("sort_order", { ascending: false })
     .limit(1)
     .maybeSingle();
   const { data, error } = await supabase
     .from("categories")
     .insert({
-      user_id: user.id,
+      space_id: space.id,
       name: parsed.data.name,
       kind: parsed.data.kind,
       icon: parsed.data.icon,
@@ -94,30 +98,30 @@ export async function createCategory(input: CategoryInput): Promise<ActionResult
   return { ok: true, id: data.id as string };
 }
 
+// Category edits go through the user's own client: RLS limits them to categories
+// in spaces the user belongs to (their own, or the one shared with their partner).
 export async function updateCategory(id: string, input: CategoryInput): Promise<ActionResult> {
-  const user = await requireUser();
+  await requireUser();
   const parsed = categoryInput.omit({ kind: true }).safeParse(input);
   if (!uuid.safeParse(id).success || !parsed.success) return { ok: false, error: "Invalid category." };
   const supabase = await createClient();
   const { error } = await supabase
     .from("categories")
     .update({ name: parsed.data.name, icon: parsed.data.icon, color: parsed.data.color, is_fixed: parsed.data.isFixed })
-    .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("id", id);
   if (error) return failed("update category", error, error.code === "23505" ? "You already have a category with that name." : undefined);
   return done();
 }
 
 /** Archiving hides a category from pickers; history keeps pointing at it. */
 export async function setCategoryArchived(id: string, archived: boolean): Promise<ActionResult> {
-  const user = await requireUser();
+  await requireUser();
   if (!uuid.safeParse(id).success) return { ok: false, error: "Invalid category." };
   const supabase = await createClient();
   const { error } = await supabase
     .from("categories")
     .update({ archived_at: archived ? new Date().toISOString() : null })
-    .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("id", id);
   if (error) return failed("archive category", error, error.code === "23505" ? "An active category already has that name." : undefined);
   return done();
 }
@@ -133,12 +137,12 @@ export async function mergeCategory(sourceId: string, targetId: string): Promise
 
 /** Persist a new order (ids in display order). */
 export async function reorderCategories(orderedIds: string[]): Promise<ActionResult> {
-  const user = await requireUser();
+  await requireUser();
   const parsed = z.array(uuid).max(200).safeParse(orderedIds);
   if (!parsed.success) return { ok: false, error: "Invalid order." };
   const supabase = await createClient();
   const results = await Promise.all(
-    parsed.data.map((id, i) => supabase.from("categories").update({ sort_order: (i + 1) * 10 }).eq("id", id).eq("user_id", user.id)),
+    parsed.data.map((id, i) => supabase.from("categories").update({ sort_order: (i + 1) * 10 }).eq("id", id)),
   );
   const error = results.find((r) => r.error)?.error ?? null;
   return error ? failed("reorder", error) : done();
@@ -160,9 +164,9 @@ export async function saveInitialBudget(monthStart: string, amounts: Record<stri
       return { ok: false, error: "Enter amounts like 4500 or 4500,50." };
     }
   }
-  const supabase = await createClient();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   if (Object.keys(budgets).length > 0) {
-    const { error } = await supabase.rpc("set_month_budgets", { p_month: monthStart, p_amounts: budgets });
+    const { error } = await supabase.rpc("set_month_budgets", { p_space: space.id, p_month: monthStart, p_amounts: budgets });
     if (error) return failed("initial budget", error);
   }
   const { error } = await supabase.from("profiles").update({ onboarding_budget_at: new Date().toISOString() }).eq("id", user.id);
@@ -171,8 +175,8 @@ export async function saveInitialBudget(monthStart: string, amounts: Record<stri
 
 export async function ensureStarterCategories(): Promise<ActionResult> {
   await requireUser();
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("create_starter_categories");
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
+  const { error } = await supabase.rpc("create_starter_categories", { p_space: space.id });
   return error ? failed("starter categories", error) : done();
 }
 

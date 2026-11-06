@@ -3,15 +3,18 @@ import { cache } from "react";
 import { requireUser } from "@/lib/auth";
 import { summarizeMonth, type MonthSummary } from "@/lib/budget";
 import { addMonths, minDate, monthEnd, monthStart, todayIn, weekStart, type IsoDate } from "@/lib/dates";
+import { getActiveSpace } from "@/lib/spaces";
 import { createClient } from "@/lib/supabase/server";
 import type { AccountSummary, Category, ConnectionSummary, TransactionListItem } from "./types";
 
 // Data access layer. Every function resolves the signed-in user first and queries
-// through the user's own Supabase client, so RLS applies to all reads.
+// through the user's own Supabase client, so RLS applies to all reads. Reads are
+// also narrowed to the space being viewed (personal or shared): RLS decides what
+// you may see, the space decides what you are looking at.
 
 type Row = Record<string, unknown>;
 
-const TX_SELECT = `id, account_id, status, effective_date, amount_minor, currency, original_amount_minor, original_currency,
+const TX_SELECT = `id, user_id, account_id, status, effective_date, amount_minor, currency, original_amount_minor, original_currency,
   counterparty, description, merchant_key, treatment, needs_review, note, removed_at,
   suggested_category_id, suggested_treatment, suggestion_reason,
   transaction_allocations ( category_id, amount_minor ),
@@ -30,7 +33,7 @@ function toCategory(r: Row): Category {
   };
 }
 
-function toTransaction(r: Row): TransactionListItem {
+function toTransaction(r: Row, userId: string): TransactionListItem {
   const account = r.accounts as Row;
   return {
     id: r.id as string,
@@ -58,6 +61,7 @@ function toTransaction(r: Row): TransactionListItem {
     })),
     isDemo: account?.provider === "demo",
     isManual: account?.provider === "manual",
+    isMine: r.user_id === userId,
     accountIncluded: account?.include_in_budget === true,
   };
 }
@@ -99,10 +103,11 @@ export const getToday = cache(async (): Promise<IsoDate> => {
 
 export const getCategories = cache(async (): Promise<Category[]> => {
   await requireUser();
-  const supabase = await createClient();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   const { data, error } = await supabase
     .from("categories")
     .select("id, name, kind, icon, color, is_fixed, sort_order, archived_at")
+    .eq("space_id", space.id)
     .is("merged_into_id", null)
     .order("sort_order")
     .order("name");
@@ -112,16 +117,20 @@ export const getCategories = cache(async (): Promise<Category[]> => {
 
 export async function getMonthBudgets(month: IsoDate): Promise<Map<string, number>> {
   await requireUser();
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("monthly_budgets").select("category_id, amount_minor").eq("month", month);
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
+  const { data, error } = await supabase
+    .from("monthly_budgets")
+    .select("category_id, amount_minor")
+    .eq("space_id", space.id)
+    .eq("month", month);
   if (error) fail("budgets", error);
   return new Map(data.map((b) => [b.category_id as string, Number(b.amount_minor)]));
 }
 
 /** Make sure `month` has its own budget snapshot (copied from the latest earlier month). */
 export async function ensureMonthBudget(month: IsoDate) {
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("ensure_month_budget", { p_month: month });
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
+  const { error } = await supabase.rpc("ensure_month_budget", { p_space: space.id, p_month: month });
   if (error) fail("budget snapshot", error);
 }
 
@@ -139,7 +148,8 @@ export type MonthView = {
 };
 
 export async function getMonthView(month: IsoDate): Promise<MonthView> {
-  await requireUser();
+  const user = await requireUser();
+  const space = await getActiveSpace();
   const today = await getToday();
   const start = monthStart(month);
   // Only materialise budgets for the past, the present and next month.
@@ -153,6 +163,7 @@ export async function getMonthView(month: IsoDate): Promise<MonthView> {
     supabase
       .from("transactions")
       .select(TX_SELECT)
+      .eq("space_id", space.id)
       .gte("effective_date", from)
       .lte("effective_date", monthEnd(start))
       .is("removed_at", null)
@@ -160,13 +171,14 @@ export async function getMonthView(month: IsoDate): Promise<MonthView> {
     supabase
       .from("transactions")
       .select("id, accounts!inner(is_synced)", { count: "exact", head: true })
+      .eq("space_id", space.id)
       .eq("needs_review", true)
       .is("removed_at", null)
       .eq("accounts.is_synced", true),
     getConnections(),
   ]);
   if (txs.error) fail("transactions", txs.error);
-  const transactions = (txs.data as unknown as Row[]).map(toTransaction);
+  const transactions = (txs.data as unknown as Row[]).map((r) => toTransaction(r, user.id));
 
   const summary = summarizeMonth({
     month: start,
@@ -229,20 +241,29 @@ export function isMonthPartial(connections: ConnectionSummary[], month: IsoDate)
   );
 }
 
-export const getConnections = cache(async (): Promise<ConnectionSummary[]> => {
-  await requireUser();
-  const supabase = await createClient();
+/**
+ * Bank connections and their accounts.
+ *   "space": accounts in the space being viewed (for budgets, notes and filters).
+ *     Your own connections are always listed in your personal space, even when
+ *     every account of them is shared.
+ *   "all": every account you can see, private or shared (for managing accounts).
+ */
+export const getConnections = cache(async (scope: "space" | "all" = "space"): Promise<ConnectionSummary[]> => {
+  const user = await requireUser();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
+  let accountQuery = supabase
+    .from("accounts")
+    .select(
+      "id, user_id, space_id, connection_id, name, iban_masked, currency, is_synced, include_in_budget, history_requested_from, history_available_from, history_limited, initial_import_completed_at, last_synced_at, balance_minor, provider, created_at",
+    )
+    .order("created_at");
+  if (scope === "space") accountQuery = accountQuery.eq("space_id", space.id);
   const [conns, accounts] = await Promise.all([
     supabase
       .from("bank_connections")
-      .select("id, provider, institution_name, status, consent_valid_until, last_synced_at, last_sync_error, rate_limited_until, created_at")
+      .select("id, user_id, provider, institution_name, status, consent_valid_until, last_synced_at, last_sync_error, rate_limited_until, created_at")
       .order("created_at"),
-    supabase
-      .from("accounts")
-      .select(
-        "id, connection_id, name, iban_masked, currency, is_synced, include_in_budget, history_requested_from, history_available_from, history_limited, initial_import_completed_at, last_synced_at, balance_minor, provider, created_at",
-      )
-      .order("created_at"),
+    accountQuery,
   ]);
   if (conns.error) fail("connections", conns.error);
   if (accounts.error) fail("accounts", accounts.error);
@@ -260,23 +281,29 @@ export const getConnections = cache(async (): Promise<ConnectionSummary[]> => {
     lastSyncedAt: (a.last_synced_at as string | null) ?? null,
     balanceMinor: a.balance_minor === null ? null : Number(a.balance_minor),
     provider: a.provider as string,
+    spaceId: a.space_id as string,
+    isMine: a.user_id === user.id,
   });
-  const result: ConnectionSummary[] = conns.data.map((c) => ({
-    id: c.id as string,
-    provider: c.provider as ConnectionSummary["provider"],
-    institutionName: c.institution_name as string,
-    status: c.status as ConnectionSummary["status"],
-    consentValidUntil: (c.consent_valid_until as string | null) ?? null,
-    lastSyncedAt: (c.last_synced_at as string | null) ?? null,
-    lastSyncError: (c.last_sync_error as string | null) ?? null,
-    rateLimitedUntil: (c.rate_limited_until as string | null) ?? null,
-    accounts: accounts.data.filter((a) => a.connection_id === c.id).map(toAccount),
-  }));
+  const result: ConnectionSummary[] = conns.data
+    .map((c) => ({
+      id: c.id as string,
+      isMine: c.user_id === user.id,
+      provider: c.provider as ConnectionSummary["provider"],
+      institutionName: c.institution_name as string,
+      status: c.status as ConnectionSummary["status"],
+      consentValidUntil: (c.consent_valid_until as string | null) ?? null,
+      lastSyncedAt: (c.last_synced_at as string | null) ?? null,
+      lastSyncError: (c.last_sync_error as string | null) ?? null,
+      rateLimitedUntil: (c.rate_limited_until as string | null) ?? null,
+      accounts: accounts.data.filter((a) => a.connection_id === c.id).map(toAccount),
+    }))
+    .filter((c) => scope === "all" || c.accounts.length > 0 || (c.isMine && space.kind === "personal"));
   // Accounts whose connection was removed keep their history.
   const orphaned = accounts.data.filter((a) => !a.connection_id && a.provider !== "manual").map(toAccount);
   if (orphaned.length > 0) {
     result.push({
       id: "disconnected",
+      isMine: true,
       provider: "enable_banking",
       institutionName: "Disconnected accounts",
       status: "revoked",
@@ -291,8 +318,9 @@ export const getConnections = cache(async (): Promise<ConnectionSummary[]> => {
   if (manual.length > 0) {
     result.push({
       id: "manual",
+      isMine: true,
       provider: "manual",
-      institutionName: "Added by you",
+      institutionName: "Added by hand",
       status: "active",
       consentValidUntil: null,
       lastSyncedAt: null,
@@ -305,11 +333,12 @@ export const getConnections = cache(async (): Promise<ConnectionSummary[]> => {
 });
 
 export async function getReviewQueue(limit = 200): Promise<TransactionListItem[]> {
-  await requireUser();
-  const supabase = await createClient();
+  const user = await requireUser();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   const { data, error } = await supabase
     .from("transactions")
     .select(TX_SELECT)
+    .eq("space_id", space.id)
     .eq("needs_review", true)
     .is("removed_at", null)
     .eq("accounts.is_synced", true)
@@ -317,7 +346,7 @@ export async function getReviewQueue(limit = 200): Promise<TransactionListItem[]
     .order("id", { ascending: false })
     .limit(limit);
   if (error) fail("review queue", error);
-  return data.map(toTransaction);
+  return data.map((r) => toTransaction(r, user.id));
 }
 
 export type TransactionFilters = {
@@ -339,8 +368,8 @@ export async function listTransactions(
   filters: TransactionFilters,
   cursor: { date: IsoDate; id: string } | null,
 ): Promise<{ items: TransactionListItem[]; nextCursor: { date: IsoDate; id: string } | null }> {
-  await requireUser();
-  const supabase = await createClient();
+  const user = await requireUser();
+  const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   const categoryJoin = filters.categoryId ? "transaction_allocations!inner ( category_id, amount_minor )" : "transaction_allocations ( category_id, amount_minor )";
   let query = supabase
     .from("transactions")
@@ -349,7 +378,7 @@ export async function listTransactions(
     .order("id", { ascending: false })
     .limit(PAGE_SIZE + 1);
 
-  query = query.is("removed_at", null);
+  query = query.eq("space_id", space.id).is("removed_at", null);
   if (filters.accountId) query = query.eq("account_id", filters.accountId);
   if (filters.categoryId) query = query.eq("transaction_allocations.category_id", filters.categoryId);
   if (filters.from) query = query.gte("effective_date", filters.from);
@@ -379,7 +408,7 @@ export async function listTransactions(
 
   const { data, error } = await query;
   if (error) fail("transactions", error);
-  const rows = (data as unknown as Row[]).map(toTransaction);
+  const rows = (data as unknown as Row[]).map((r) => toTransaction(r, user.id));
   const hasMore = rows.length > PAGE_SIZE;
   const items = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
   const last = items.at(-1);
@@ -397,9 +426,9 @@ export function sanitizeSearch(q: string | undefined): string {
 }
 
 export async function getTransaction(id: string): Promise<TransactionListItem | null> {
-  await requireUser();
+  const user = await requireUser();
   const supabase = await createClient();
   const { data, error } = await supabase.from("transactions").select(TX_SELECT).eq("id", id).maybeSingle();
   if (error) fail("transaction", error);
-  return data ? toTransaction(data as unknown as Row) : null;
+  return data ? toTransaction(data as unknown as Row, user.id) : null;
 }
