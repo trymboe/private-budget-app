@@ -17,6 +17,13 @@
 --     the same way (x, user_id) made cross-user references impossible before.
 --   * Membership is changed only by the server (service role), never by the browser.
 
+-- The allocation sum check is a deferred constraint trigger. Backfilling
+-- transaction_allocations below would queue its events until commit, and ALTER
+-- TABLE refuses to run on a table with pending trigger events when the whole
+-- migration runs in one transaction (as the Supabase SQL editor does). Checking
+-- immediately avoids that; the backfill never changes amounts.
+set constraints all immediate;
+
 -- ---------------------------------------------------------------------------
 -- Spaces and membership
 -- ---------------------------------------------------------------------------
