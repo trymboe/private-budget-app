@@ -135,6 +135,34 @@ export async function mergeCategory(sourceId: string, targetId: string): Promise
   return error ? failed("merge", error, "Those categories could not be merged.") : done();
 }
 
+/** How many transactions have (part of) their amount in this category. */
+export async function countCategoryTransactions(categoryId: string): Promise<number | null> {
+  await requireUser();
+  if (!uuid.safeParse(categoryId).success) return null;
+  const supabase = await createClient();
+  const { count, error } = await supabase
+    .from("transaction_allocations")
+    .select("id", { count: "exact", head: true })
+    .eq("category_id", categoryId);
+  if (error) {
+    console.error("[action] count category", error.code, error.message);
+    return null;
+  }
+  return count ?? 0;
+}
+
+/** Move every transaction from one category to another. Both categories stay. */
+export async function moveCategoryTransactions(sourceId: string, targetId: string): Promise<ActionResult & { moved?: number }> {
+  await requireUser();
+  const parsed = z.object({ s: uuid, t: uuid }).safeParse({ s: sourceId, t: targetId });
+  if (!parsed.success || sourceId === targetId) return { ok: false, error: "Pick a different category." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("move_category_transactions", { p_source: parsed.data.s, p_target: parsed.data.t });
+  if (error) return failed("move transactions", error, "Those transactions could not be moved.");
+  revalidatePath("/", "layout");
+  return { ok: true, moved: Number(data ?? 0) };
+}
+
 /** Persist a new order (ids in display order). */
 export async function reorderCategories(orderedIds: string[]): Promise<ActionResult> {
   await requireUser();

@@ -134,6 +134,14 @@ export async function ensureMonthBudget(month: IsoDate) {
   if (error) fail("budget snapshot", error);
 }
 
+/** provider_identity of the account that holds history imported from Buddy. */
+export const IMPORTED_HISTORY_IDENTITY = "buddy";
+
+/** "buddy" in the personal space, "buddy:<spaceId>" in a shared one. */
+export function isImportedHistory(identity: string | null): boolean {
+  return identity === IMPORTED_HISTORY_IDENTITY || (identity?.startsWith(`${IMPORTED_HISTORY_IDENTITY}:`) ?? false);
+}
+
 export type DataNote =
   | { kind: "partial_history"; accountName: string; availableFrom: IsoDate }
   | { kind: "import_incomplete"; accountName: string }
@@ -226,20 +234,7 @@ export function dataNotes(connections: ConnectionSummary[], month: IsoDate): Dat
   return notes;
 }
 
-/** True when the data for `month` is known to be incomplete for budget accounts. */
-export function isMonthPartial(connections: ConnectionSummary[], month: IsoDate): boolean {
-  const end = monthEnd(month);
-  return connections.some((c) =>
-    c.accounts.some(
-      (a) =>
-        a.isSynced &&
-        a.includeInBudget &&
-        ((a.historyAvailableFrom !== null && a.historyAvailableFrom > month) ||
-          (a.historyRequestedFrom !== null && a.historyRequestedFrom > month && a.historyRequestedFrom <= end) ||
-          !a.initialImportCompletedAt),
-    ),
-  );
-}
+export { isMonthPartial } from "./coverage";
 
 /**
  * Bank connections and their accounts.
@@ -254,7 +249,7 @@ export const getConnections = cache(async (scope: "space" | "all" = "space"): Pr
   let accountQuery = supabase
     .from("accounts")
     .select(
-      "id, user_id, space_id, connection_id, name, iban_masked, currency, is_synced, include_in_budget, history_requested_from, history_available_from, history_limited, initial_import_completed_at, last_synced_at, balance_minor, provider, created_at",
+      "id, user_id, space_id, connection_id, name, iban_masked, currency, is_synced, include_in_budget, history_requested_from, history_available_from, history_limited, initial_import_completed_at, last_synced_at, balance_minor, provider, provider_identity, created_at",
     )
     .order("created_at");
   if (scope === "space") accountQuery = accountQuery.eq("space_id", space.id);
@@ -267,6 +262,18 @@ export const getConnections = cache(async (scope: "space" | "all" = "space"): Pr
   ]);
   if (conns.error) fail("connections", conns.error);
   if (accounts.error) fail("accounts", accounts.error);
+  // Imported history accounts: find the last day each one covers.
+  const importedThrough = new Map<string, IsoDate>();
+  for (const a of accounts.data.filter((a) => a.provider === "manual" && isImportedHistory(a.provider_identity as string | null))) {
+    const { data: last, error } = await supabase
+      .from("transactions")
+      .select("effective_date")
+      .eq("account_id", a.id)
+      .order("effective_date", { ascending: false })
+      .limit(1);
+    if (error) fail("imported history", error);
+    if (last[0]) importedThrough.set(a.id as string, last[0].effective_date as string);
+  }
   const toAccount = (a: Row): AccountSummary => ({
     id: a.id as string,
     name: a.name as string,
@@ -283,6 +290,7 @@ export const getConnections = cache(async (scope: "space" | "all" = "space"): Pr
     provider: a.provider as string,
     spaceId: a.space_id as string,
     isMine: a.user_id === user.id,
+    importedThrough: importedThrough.get(a.id as string) ?? null,
   });
   const result: ConnectionSummary[] = conns.data
     .map((c) => ({

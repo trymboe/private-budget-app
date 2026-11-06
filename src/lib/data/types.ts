@@ -74,4 +74,9 @@ export type AccountSummary = {
   spaceId: string;
   /** Owned by the signed-in user: only they can rename, toggle, move or remove it. */
   isMine: boolean;
+  /**
+   * History imported from another app (e.g. Buddy): the last day it covers.
+   * Null for every other account.
+   */
+  importedThrough: IsoDate | null;
 };

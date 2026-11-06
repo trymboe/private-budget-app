@@ -320,6 +320,73 @@ describe("budgets", () => {
     expect(Number(budget.rows[0].amount_minor)).toBe(150_000);
   });
 
+  it("moves all transactions to another category and keeps the source", async () => {
+    const user = "00000000-0000-4000-8000-0000000000d5";
+    await createUser(db, user);
+    const cats = await starter(user);
+    const account = await createAccount(db, user);
+    const a = await createTransaction(db, user, account, -10_000, { merchantKey: "kino" });
+    const b = await createTransaction(db, user, account, -20_000);
+    const split = await createTransaction(db, user, account, -9_000);
+    const cancel = await createTransaction(db, user, account, -5_000);
+    const other = await createTransaction(db, user, account, -1_000);
+    await db.asUser(user, async () => {
+      await db.query(`select public.categorize_transactions($1::uuid[], $2, true)`, [[a, b], cats["Entertainment"]]);
+      await db.query(`select public.categorize_transactions($1::uuid[], $2, false)`, [[other], cats["Groceries"]]);
+      await db.query(`select public.set_transaction_split($1, $2)`, [
+        split,
+        JSON.stringify([
+          { category_id: cats["Entertainment"], amount_minor: -4_000 },
+          { category_id: cats["Shopping"], amount_minor: -5_000 },
+        ]),
+      ]);
+      await db.query(`select public.set_transaction_split($1, $2)`, [
+        cancel,
+        JSON.stringify([
+          { category_id: cats["Entertainment"], amount_minor: 1_000 },
+          { category_id: cats["Shopping"], amount_minor: -1_000 },
+          { category_id: cats["Groceries"], amount_minor: -5_000 },
+        ]),
+      ]);
+    });
+    const moved = await db.asUser(user, () =>
+      db.query<{ n: number }>(`select public.move_category_transactions($1, $2) as n`, [cats["Entertainment"], cats["Shopping"]]),
+    );
+    expect(moved.rows[0].n).toBe(4);
+
+    const space = await personalSpace(db, user);
+    const allocations = await db.query<{ transaction_id: string; category_id: string; amount_minor: string }>(
+      `select transaction_id, category_id, amount_minor from public.transaction_allocations where space_id = $1`,
+      [space],
+    );
+    const by = (tx: string) =>
+      allocations.rows
+        .filter((r) => r.transaction_id === tx)
+        .map((r) => [r.category_id, Number(r.amount_minor)])
+        .sort();
+    expect(by(a)).toEqual([[cats["Shopping"], -10_000]]);
+    expect(by(b)).toEqual([[cats["Shopping"], -20_000]]);
+    expect(by(split)).toEqual([[cats["Shopping"], -9_000]]);
+    expect(by(cancel)).toEqual([[cats["Groceries"], -5_000]]);
+    expect(by(other)).toEqual([[cats["Groceries"], -1_000]]);
+
+    const source = await db.query<{ archived_at: string | null }>(`select archived_at from public.categories where id = $1`, [
+      cats["Entertainment"],
+    ]);
+    expect(source.rows[0].archived_at).toBeNull();
+    const rule = await db.query<{ category_id: string }>(
+      `select category_id from public.categorization_rules where space_id = $1 and merchant_key = 'kino'`,
+      [space],
+    );
+    expect(rule.rows[0].category_id).toBe(cats["Shopping"]);
+
+    // Another user's category is never a valid target or source.
+    const bob = await starter(BOB);
+    await expect(
+      db.asUser(user, () => db.query(`select public.move_category_transactions($1, $2)`, [cats["Groceries"], bob["Groceries"]])),
+    ).rejects.toThrow(/not found/);
+  });
+
   it("excludes accounts outside the budget and transfers from reports", async () => {
     const user = "00000000-0000-4000-8000-0000000000e5";
     await createUser(db, user);

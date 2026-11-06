@@ -1,11 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
 import {
+  countCategoryTransactions,
   createCategory,
   mergeCategory,
+  moveCategoryTransactions,
   reorderCategories,
   setCategoryArchived,
   updateCategory,
@@ -134,6 +136,7 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
             key={editing === "new" ? "new" : editing.id}
             category={editing === "new" ? null : editing}
             others={active.filter((c) => editing === "new" || (c.id !== editing.id && c.kind === editing.kind))}
+            moveTargets={active.filter((c) => editing === "new" || c.id !== editing.id)}
             onDone={(message) => {
               setEditing(null);
               toast({ message });
@@ -149,10 +152,12 @@ export function CategoryManager({ categories }: { categories: Category[] }) {
 function CategoryForm({
   category,
   others,
+  moveTargets,
   onDone,
 }: {
   category: Category | null;
   others: Category[];
+  moveTargets: Category[];
   onDone: (message: string) => void;
 }) {
   const [draft, setDraft] = useState<Draft>(
@@ -258,6 +263,7 @@ function CategoryForm({
 
       {category ? (
         <div className="space-y-4 border-t border-line pt-6">
+          <MoveTransactions category={category} targets={moveTargets} onDone={onDone} onError={setError} />
           <div className="space-y-2">
             <Label htmlFor="merge">Merge into another category</Label>
             <p className="text-xs text-ink-3">
@@ -312,5 +318,81 @@ function CategoryForm({
         </div>
       ) : null}
     </form>
+  );
+}
+
+function MoveTransactions({
+  category,
+  targets,
+  onDone,
+  onError,
+}: {
+  category: Category;
+  targets: Category[];
+  onDone: (message: string) => void;
+  onError: (message: string) => void;
+}) {
+  const [target, setTarget] = useState("");
+  const [count, setCount] = useState<number | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    let live = true;
+    countCategoryTransactions(category.id).then((n) => live && setCount(n));
+    return () => {
+      live = false;
+    };
+  }, [category.id]);
+
+  const plural = (n: number) => `${n.toLocaleString("nb-NO")} transaction${n === 1 ? "" : "s"}`;
+  const groups = [
+    { label: "Spending", list: targets.filter((c) => c.kind === "expense") },
+    { label: "Income", list: targets.filter((c) => c.kind === "income") },
+  ].filter((g) => g.list.length > 0);
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor="move">Move all transactions to another category</Label>
+      <p className="text-xs text-ink-3">
+        {count === null ? "Counting transactions…" : count === 0 ? `${category.name} has no transactions.` : `${category.name} has ${plural(count)}.`}{" "}
+        They all move to the category you choose. {category.name} itself stays, with its budgets.
+      </p>
+      <div className="flex gap-2">
+        <select
+          id="move"
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          className="h-11 min-w-0 flex-1 rounded-md bg-surface px-3 text-sm ring-1 ring-inset ring-line-strong"
+        >
+          <option value="">Choose…</option>
+          {groups.map((g) => (
+            <optgroup key={g.label} label={g.label}>
+              {g.list.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </optgroup>
+          ))}
+        </select>
+        <Button
+          variant="secondary"
+          disabled={!target || pending || count === 0}
+          onClick={() =>
+            startTransition(async () => {
+              const to = targets.find((c) => c.id === target);
+              if (!to) return;
+              const what = count === null ? "all transactions" : plural(count);
+              if (!confirm(`Move ${what} from ${category.name} to ${to.name}?`)) return;
+              const r = await moveCategoryTransactions(category.id, to.id);
+              if (!r.ok) return onError(r.error);
+              onDone(`Moved ${plural(r.moved ?? 0)} to ${to.name}`);
+            })
+          }
+        >
+          Move
+        </Button>
+      </div>
+    </div>
   );
 }

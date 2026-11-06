@@ -16,6 +16,11 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
+  experimental: {
+    // The history import sends the whole export file to a server action. Vercel
+    // caps function request bodies at 4.5 MB, so stay just under that.
+    serverActions: { bodySizeLimit: "4mb" },
+  },
   turbopack: {
     rules: {
       "*.css": {
