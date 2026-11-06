@@ -31,12 +31,21 @@ export type Db = PGlite & {
   asUser<T>(userId: string, fn: () => Promise<T>): Promise<T>;
 };
 
-export async function createDb(): Promise<Db> {
+export function migrationFiles() {
+  return readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+}
+
+export function readMigration(file: string) {
+  return readFileSync(join(MIGRATIONS_DIR, file), "utf8");
+}
+
+/** A database with the migrations applied, optionally only those before `until`. */
+export async function createDb(until?: string): Promise<Db> {
   const db = (await PGlite.create()) as unknown as Db;
   await db.exec(SUPABASE_STUB);
-  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
-  for (const file of files) {
-    await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+  for (const file of migrationFiles()) {
+    if (until && file >= until) break;
+    await db.exec(readMigration(file));
   }
   db.asUser = async (userId, fn) => {
     await db.exec(`set request.jwt.claim.sub = '${userId}'; set role authenticated;`);
