@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { HomeView } from "@/components/home/home-view";
+import { getRecentAutoFiled } from "@/lib/data/auto";
 import { getConnections, getMonthView, getProfile, getToday } from "@/lib/data/queries";
 import { monthStart } from "@/lib/dates";
 
@@ -10,7 +11,7 @@ export default async function HomePage() {
   const [profile, today] = await Promise.all([getProfile(), getToday()]);
   const view = await getMonthView(monthStart(today));
   if (!profile.onboarding.completed && view.categories.length === 0) redirect("/welcome");
-  const connections = await getConnections();
+  const [connections, autoFiled] = await Promise.all([getConnections(), getRecentAutoFiled()]);
   return (
     <HomeView
       summary={view.summary}
@@ -21,6 +22,7 @@ export default async function HomePage() {
       onboarding={profile.onboarding}
       notes={view.notes}
       connections={connections}
+      autoFiled={autoFiled}
     />
   );
 }

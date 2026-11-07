@@ -4,6 +4,7 @@ import { ChevronRight } from "lucide-react";
 import { signOut } from "@/app/(auth)/actions";
 import { Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
+import { getAutoSummary } from "@/lib/data/auto";
 import { getConnections, getProfile } from "@/lib/data/queries";
 import { APP_NAME } from "@/lib/brand";
 import { getSharedSpace, partnerOf } from "@/lib/spaces";
@@ -11,7 +12,7 @@ import { getSharedSpace, partnerOf } from "@/lib/spaces";
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  const [profile, connections, shared] = await Promise.all([getProfile(), getConnections("all"), getSharedSpace()]);
+  const [profile, connections, shared, auto] = await Promise.all([getProfile(), getConnections("all"), getSharedSpace(), getAutoSummary()]);
   const real = connections.filter((c) => c.id !== "disconnected" && c.id !== "manual" && c.isMine);
   const partner = partnerOf(shared);
   const needsAttention = real.some((c) => c.status === "expired");
@@ -25,6 +26,11 @@ export default async function SettingsPage() {
     },
     { href: "/settings/sharing", label: "Sharing", detail: partner ? `With ${partner.name ?? "your partner"}` : "Invite your partner" },
     { href: "/budget/categories", label: "Categories", detail: "Names, colours, order" },
+    {
+      href: "/settings/auto-categorise",
+      label: "Auto-categorised merchants",
+      detail: !auto.enabled ? "Off" : auto.merchants === 0 ? "None yet" : `${auto.merchants} ${auto.merchants === 1 ? "merchant" : "merchants"}`,
+    },
     { href: "/welcome", label: "Setup guide", detail: profile.onboarding.completed ? "Completed" : "In progress" },
     { href: "/settings/password", label: "Change password", detail: "" },
   ];

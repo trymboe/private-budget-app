@@ -30,7 +30,17 @@ const WRITE_CHUNK = 400;
 export type SyncTrigger = "initial" | "scheduled" | "manual";
 
 export type SyncOutcome =
-  | { ok: true; fetched: number; inserted: number; updated: number; removed: number; earliest: IsoDate | null; limited: boolean }
+  | {
+      ok: true;
+      fetched: number;
+      inserted: number;
+      updated: number;
+      removed: number;
+      earliest: IsoDate | null;
+      limited: boolean;
+      /** New transactions filed by trusted merchant rules (they skip review). */
+      autoCategorized: number;
+    }
   | { ok: false; code: SyncErrorCode; message: string };
 
 export type SyncErrorCode =
@@ -218,7 +228,8 @@ export async function syncAccount(input: {
     // 4. Write.
     // Rules belong to the space the account is in (private or shared).
     const rules = await loadRules(db, account.space_id);
-    const inserted = await insertTransactions(db, input.userId, account, plan.inserts, rules);
+    const insertedIds = await insertTransactions(db, input.userId, account, plan.inserts, rules);
+    const inserted = insertedIds.length;
     let updated = 0;
     const seenIds: string[] = [];
     for (const u of plan.updates) {
@@ -242,6 +253,8 @@ export async function syncAccount(input: {
       await db.from("transactions").update({ removed_at: new Date().toISOString() }).in("id", plan.removals).eq("user_id", input.userId);
     }
     if (inserted > 0) await suggestTransfers(db, input.userId, window.from);
+    // After transfer suggestions, so a likely transfer is never filed as spending.
+    const autoCategorized = await autoCategorize(db, account.id, insertedIds);
 
     // 5. Bookkeeping.
     const earliest = normalized.reduce<IsoDate | null>((min, t) => (!min || t.effectiveDate < min ? t.effectiveDate : min), null);
@@ -276,7 +289,7 @@ export async function syncAccount(input: {
       updated_count: updated,
       removed_count: plan.removals.length,
     });
-    return { ok: true, fetched: raw.length, inserted, updated, removed: plan.removals.length, earliest, limited };
+    return { ok: true, fetched: raw.length, inserted, updated, removed: plan.removals.length, earliest, limited, autoCategorized };
   } catch (err) {
     const code = await handleError(db, input.userId, conn.id, err);
     await finishRun({ status: "failed", error_code: err instanceof BankApiError ? err.code.slice(0, 80) : code });
@@ -382,8 +395,8 @@ async function insertTransactions(
   account: { id: string; space_id: string },
   items: IncomingTransaction[],
   rules: Map<string, string>,
-): Promise<number> {
-  if (items.length === 0) return 0;
+): Promise<string[]> {
+  if (items.length === 0) return [];
   const rows = items.map((t) => {
     const suggestion = t.merchantKey ? rules.get(t.merchantKey) : undefined;
     return {
@@ -396,26 +409,49 @@ async function insertTransactions(
       suggestion_reason: suggestion ? "merchant_rule" : null,
     };
   });
-  let inserted = 0;
+  // Ids of the rows actually inserted (ignored duplicates are not returned).
+  const inserted: string[] = [];
   for (let i = 0; i < rows.length; i += WRITE_CHUNK) {
     const chunk = rows.slice(i, i + WRITE_CHUNK);
-    const { error, count } = await db
+    const { data, error } = await db
       .from("transactions")
-      .upsert(chunk, { onConflict: "account_id,fingerprint", ignoreDuplicates: true, count: "exact" });
+      .upsert(chunk, { onConflict: "account_id,fingerprint", ignoreDuplicates: true })
+      .select("id");
     if (!error) {
-      inserted += count ?? chunk.length;
+      inserted.push(...(data ?? []).map((r) => r.id as string));
       continue;
     }
     if (error.code !== "23505") throw error;
     // A bank reference collided with a row outside the lookup window: insert
     // one by one and skip the duplicates rather than failing the sync.
     for (const row of chunk) {
-      const r = await db.from("transactions").insert(row);
-      if (!r.error) inserted += 1;
+      const r = await db.from("transactions").insert(row).select("id").single();
+      if (!r.error) inserted.push(r.data.id as string);
       else if (r.error.code !== "23505") throw r.error;
     }
   }
   return inserted;
+}
+
+/**
+ * File new transactions from trusted merchants (confirmed in the same category
+ * three times; see apply_auto_categorization). Best effort: if it fails, the
+ * transactions simply wait in review with their suggestion, as before.
+ */
+async function autoCategorize(db: SupabaseClient, accountId: string, ids: string[]): Promise<number> {
+  let filed = 0;
+  for (let i = 0; i < ids.length; i += WRITE_CHUNK) {
+    const { data, error } = await db.rpc("apply_auto_categorization", {
+      p_account: accountId,
+      p_transaction_ids: ids.slice(i, i + WRITE_CHUNK),
+    });
+    if (error) {
+      console.error("[sync] auto-categorise failed", error.code);
+      return filed;
+    }
+    filed += Number(data ?? 0);
+  }
+  return filed;
 }
 
 /** Suggest "transfer" for mirrored amounts across the user's own accounts. */

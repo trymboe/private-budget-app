@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { ArrowRight, Settings } from "lucide-react";
+import { AutoFiledNotice } from "@/components/auto/auto-filed-notice";
 import { CategoryMark } from "@/components/category-icon";
 import { DataNotes, ConsentReminder } from "@/components/data-notes";
 import { Page } from "@/components/page";
 import { Money } from "@/components/ui/amount";
 import { SectionLabel } from "@/components/ui/field";
 import { BudgetBar } from "@/components/ui/progress";
+import type { AutoFiledSummary } from "@/lib/auto-categorise";
 import type { CategoryLine, MonthSummary } from "@/lib/budget";
 import type { DataNote } from "@/lib/data/queries";
 import type { ConnectionSummary } from "@/lib/data/types";
@@ -22,10 +24,12 @@ export type HomeViewProps = {
   onboarding: { bank: boolean; budget: boolean; completed: boolean };
   notes: DataNote[];
   connections: ConnectionSummary[];
+  /** Transactions trusted merchants filed by themselves recently (see auto-categorise). */
+  autoFiled?: AutoFiledSummary | null;
 };
 
 /** The month at a glance. Pure presentation: all data comes in as props. */
-export function HomeView({ summary, today, reviewCount, hasAccounts, hasCategories, onboarding, notes, connections }: HomeViewProps) {
+export function HomeView({ summary, today, reviewCount, hasAccounts, hasCategories, onboarding, notes, connections, autoFiled }: HomeViewProps) {
   const flexible = summary.lines.filter((l) => !l.category.isFixed);
   const fixed = summary.lines.filter((l) => l.category.isFixed && (l.budget > 0 || l.spent !== 0));
 
@@ -44,6 +48,7 @@ export function HomeView({ summary, today, reviewCount, hasAccounts, hasCategori
 
       <div className="mt-8 space-y-3">
         {reviewCount > 0 ? <ReviewPrompt count={reviewCount} /> : null}
+        <AutoFiledNotice summary={autoFiled} />
         <ConsentReminder connections={connections} today={today} />
         {!hasAccounts ? <ConnectPrompt /> : null}
         {!onboarding.completed && hasCategories ? <FinishSetup profile={onboarding} /> : null}
