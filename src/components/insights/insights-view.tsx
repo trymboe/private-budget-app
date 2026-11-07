@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CategoryTrends, PaceChart, VarianceChart } from "@/components/insights/charts";
+import { InsightsTabs } from "@/components/insights/insights-tabs";
 import { EmptyState, Page, PageHeader } from "@/components/page";
 import { Button } from "@/components/ui/button";
 import { SectionLabel } from "@/components/ui/field";
@@ -20,6 +21,7 @@ export function InsightsView({ data }: { data: Insights }) {
   return (
     <Page wide>
       <PageHeader title="Insights" />
+      <InsightsTabs active="overview" />
       {!hasHistory && data.trends.length === 0 ? (
         <EmptyState
           title="Not enough history yet."

@@ -59,13 +59,24 @@ tests/db/              database tests on PGlite
    while long history is still available.
 3. **Daily check (the main loop).** Home shows where the month stands: spent vs
    budget, what is left per day for flexible spending, this week vs a steady pace,
-   and categories that are close to or over budget. A prompt shows how many
+   and categories that are close to or over budget, plus money in the space's
+   accounts (the bank's latest balance per account, with when it was read;
+   savings and other accounts outside the budget are grouped apart, and other
+   currencies are listed but not added to the NOK total). A prompt shows how many
    transactions wait for review.
 4. **Review queue.** One transaction at a time, large type. The suggested category
    (from a learned merchant rule) is a single tap; the full category grid never
    reorders, so your thumb learns it. Transfer, Exclude, Split and Skip are one tap
    away. "Also apply to N more from this merchant" handles bulk. Every decision has Undo.
    Keyboard: 1–9, Enter, S.
+   **Trusted merchants.** Once a merchant has been filed in the same category 3 times
+   in a row, new transactions from it are filed automatically during sync and skip
+   review. The review flow says so when it happens ("Rema 1000 will now be filed as
+   Groceries automatically", with Turn off); auto-filed rows carry an "Auto" badge;
+   Home and the empty review queue mention what was filed this week. Correcting one
+   moves the rule to the new category with one confirmation (no longer automatic),
+   with "Just this once" to keep the old rule. Settings → Auto-categorised merchants
+   has the on/off switch for the space and per-merchant switches, category and removal.
 5. **Transactions.** Search, filter by month, category, account, status, or "needs
    review"; tap any row to change category, split, treatment or add a note.
 6. **Budget.** Set amounts per category per month. A new month is copied from the
@@ -76,6 +87,9 @@ tests/db/              database tests on PGlite
    category trends, this month's cumulative pace vs last month, and cash flow
    (money in vs out, including fixed costs and savings transfers) kept separate from
    budget variance. Incomplete months are marked and left out of averages.
+   **Month over month** (`/insights/months`, also linked from Budget) shows budget
+   vs spent for the total and each category over the last 3, 6 or 12 months, with
+   averages over complete months; tap a category for its months in detail.
 8. **Consent renewal.** Bank access lasts up to 180 days. From 14 days before it
    ends, Home shows a quiet reminder; after it ends, history stays and syncing stops
    until you renew (same BankID flow; accounts are re-attached, nothing is
@@ -117,21 +131,40 @@ shared category can never be put on a private transaction.
   `identification_hash`) is stable across reconnects, so renewing re-attaches the
   same account. `include_in_budget`, `is_synced`, and the history bookkeeping
   (`history_requested_from`, `history_available_from`, `history_limited`,
-  `initial_import_completed_at`).
+  `initial_import_completed_at`). The latest balance (`balance_minor`), when it was
+  read (`balance_at`), the bank's balance type (`balance_type`, ISO 20022: booked is
+  preferred over available) and the date the bank says it applies to
+  (`balance_reference_date`). Only sync writes them.
 - `categories`: expense or income, icon, colour, `is_fixed` (rent, subscriptions:
   excluded from the pace model), sort order, `archived_at`, `merged_into_id`.
 - `monthly_budgets`: one amount per category per month (a snapshot, so changing
   next month never rewrites history).
-- `categorization_rules`: learned merchant → category rules.
+- `categorization_rules`: learned merchant → category rules. `confirmations` counts
+  same-category decisions in a row; at 3 (`auto_categorize_threshold()`) and with
+  `auto_enabled` the rule files new transactions itself. `spaces.auto_categorize` turns
+  this off for a whole space (changed through `set_auto_categorize`).
 - `transactions`: bank-owned fields (amount, dates, status, counterparty,
   description, `provider_ref`, `fingerprint`, `bank_meta`) and user-owned fields
   (`treatment`, `needs_review`, `note`). Signed `amount_minor` (negative = money
-  out). `removed_at` soft-deletes pending items the bank stopped returning.
+  out). `auto_categorized_at` is set only by sync (`apply_auto_categorization`,
+  server only) and cleared by a trigger once someone decides on the transaction. `removed_at` soft-deletes pending items the bank stopped returning.
 - `transaction_allocations`: category assignment. One row normally, several for a
   split. A deferred constraint trigger guarantees allocations sum exactly to the
   transaction amount at commit.
+- `savings_goals` / `savings_goal_contributions`: savings goals in a space (target,
+  optional date, icon, colour, completed/archived). Progress is hand-logged
+  contributions plus, optionally, one linked account in the same space: money in
+  since `starts_on` (from transactions) or its balance when known
+  (`src/lib/goals.ts` chooses; the `savings_goal_progress` view supplies both). An
+  account moving space unlinks itself instead of dragging a private goal along.
 - `sync_runs`: one row per sync with counts and an error code. A partial unique
   index allows only one running sync per account.
+- `subscriptions`: decisions about recurring payments, per space and keyed by
+  merchant and cadence: confirmed, dismissed ("not a subscription") or cancelled,
+  plus ones added by hand from a transaction, with the last accepted price.
+  Detection itself is pure app code (`src/lib/subscriptions.ts`: same merchant key,
+  a weekly/monthly/quarterly/yearly rhythm, similar amounts) and is never stored.
+  Written only through `save_subscription`; column grants keep the key and space fixed.
 
 Views `monthly_category_totals` and `monthly_cash_flow` (security invoker, so RLS
 applies) feed Home and Insights.
@@ -182,7 +215,9 @@ nothing the second time.
 6. **Write** only bank-owned fields. Categories, notes and treatment are never in
    the update, so a sync cannot undo your work. If a booked amount differs from the
    pending one, a single category follows the new amount; a split is cleared and the
-   transaction returns to review.
+   transaction returns to review. New rows from trusted merchants are then filed
+   automatically (after transfer suggestions, so a likely transfer is never filed
+   as spending); only rows inserted by this run qualify, so re-running changes nothing.
 7. **Bookkeep**: earliest date actually received, whether the bank limited history,
    balance, last sync; release the lock.
 

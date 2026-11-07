@@ -5,9 +5,12 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { ArrowLeftRight, Check, EyeOff, Split, X } from "lucide-react";
 import { categorize, setTreatment, undoReview } from "@/app/actions/transactions";
+import { AutoFiledNotice } from "@/components/auto/auto-filed-notice";
+import { RuleNotice } from "@/components/auto/rule-notice";
 import { Button } from "@/components/ui/button";
 import { Sheet } from "@/components/ui/sheet";
 import { useToast } from "@/components/ui/toast";
+import type { AutoFiledSummary, RuleChange } from "@/lib/auto-categorise";
 import type { Category, TransactionListItem } from "@/lib/data/types";
 import { formatDay, type IsoDate } from "@/lib/dates";
 import { displayMerchant } from "@/lib/merchant";
@@ -25,7 +28,18 @@ type Decision =
  * then the next one slides in. Saves happen in the background (optimistic);
  * every decision can be undone from the toast.
  */
-export function ReviewFlow({ initial, categories, today }: { initial: TransactionListItem[]; categories: Category[]; today: IsoDate }) {
+export function ReviewFlow({
+  initial,
+  categories,
+  today,
+  autoFiled,
+}: {
+  initial: TransactionListItem[];
+  categories: Category[];
+  today: IsoDate;
+  /** Recently auto-filed transactions, mentioned when the queue is empty. */
+  autoFiled?: AutoFiledSummary | null;
+}) {
   const router = useRouter();
   const toast = useToast();
   const [queue, setQueue] = useState(initial);
@@ -34,6 +48,8 @@ export function ReviewFlow({ initial, categories, today }: { initial: Transactio
   // The bulk toggle belongs to one transaction; it resets when the next one shows.
   const [applyFor, setApplyFor] = useState<string | null>(null);
   const [splitOpen, setSplitOpen] = useState(false);
+  // A decision that made a merchant automatic (or stopped it): shown until the next decision.
+  const [ruleNotice, setRuleNotice] = useState<{ change: RuleChange; merchant: string } | null>(null);
   const [, startTransition] = useTransition();
 
   const current = queue[0];
@@ -53,6 +69,7 @@ export function ReviewFlow({ initial, categories, today }: { initial: Transactio
     (decision: Decision) => {
       if (!current || leaving) return;
       const removed = queue.filter((t) => decision.ids.includes(t.id));
+      setRuleNotice(null);
       setLeaving(true);
       setTimeout(() => {
         setQueue((q) => q.filter((t) => !decision.ids.includes(t.id)));
@@ -70,6 +87,10 @@ export function ReviewFlow({ initial, categories, today }: { initial: Transactio
           setQueue((q) => [...removed, ...q.filter((t) => !decision.ids.includes(t.id))]);
           setDoneCount((n) => n - decision.ids.length);
           return;
+        }
+        const rule = "rule" in result ? (result.rule as RuleChange | undefined) : undefined;
+        if (rule) {
+          setRuleNotice({ change: rule, merchant: displayMerchant(removed[0]?.counterparty ?? null, removed[0]?.description ?? null) });
         }
         const label =
           decision.kind === "category" ? decision.category.name : decision.kind === "transfer" ? "Transfer" : "Excluded";
@@ -134,6 +155,12 @@ export function ReviewFlow({ initial, categories, today }: { initial: Transactio
             ? `You reviewed ${doneCount} ${doneCount === 1 ? "transaction" : "transactions"}. Your budget is up to date.`
             : "Nothing new to categorise right now."}
         </p>
+        {ruleNotice ? (
+          <div className="mt-6 w-full max-w-md text-left">
+            <RuleNotice change={ruleNotice.change} merchant={ruleNotice.merchant} categories={byId} onDismiss={() => setRuleNotice(null)} />
+          </div>
+        ) : null}
+        <AutoFiledNotice summary={autoFiled} className="mt-6 w-full max-w-md text-left" />
         <Button className="mt-8" size="lg" onClick={() => router.push("/")}>
           See this month
         </Button>
@@ -154,6 +181,12 @@ export function ReviewFlow({ initial, categories, today }: { initial: Transactio
           {doneCount + 1} of {total}
         </p>
       </div>
+
+      {ruleNotice ? (
+        <div className="mt-6">
+          <RuleNotice change={ruleNotice.change} merchant={ruleNotice.merchant} categories={byId} onDismiss={() => setRuleNotice(null)} />
+        </div>
+      ) : null}
 
       <article
         key={current.id}

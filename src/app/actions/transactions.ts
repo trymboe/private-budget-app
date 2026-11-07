@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireUser } from "@/lib/auth";
+import { firstRuleChange, type RuleChange } from "@/lib/auto-categorise";
 import { validateSplit } from "@/lib/budget";
+import { categorisationContext, ruleStates } from "@/lib/data/auto";
 import { getTransaction, listTransactions, type TransactionFilters } from "@/lib/data/queries";
 import { createClient } from "@/lib/supabase/server";
 
@@ -22,17 +24,28 @@ function failed(context: string, error: { message: string; code?: string } | nul
   return { ok: false, error: "That did not save. Please try again." };
 }
 
-export async function categorize(transactionIds: string[], categoryId: string): Promise<ActionResult> {
+/** Categorise, and say whether that made a merchant automatic (or stopped it being so). */
+export async function categorize(
+  transactionIds: string[],
+  categoryId: string,
+): Promise<{ ok: true; rule?: RuleChange } | { ok: false; error: string }> {
   await requireUser();
   const parsed = z.object({ ids, categoryId: uuid }).safeParse({ ids: transactionIds, categoryId });
   if (!parsed.success) return { ok: false, error: "Invalid request." };
   const supabase = await createClient();
+  // The rule change is a courtesy notice: if reading it fails, categorising still works.
+  const context = await categorisationContext(supabase, parsed.data.ids, parsed.data.categoryId).catch(() => null);
+  const before = context ? await ruleStates(supabase, context.spaceId, context.merchantKeys).catch(() => null) : null;
   const { error } = await supabase.rpc("categorize_transactions", {
     p_transaction_ids: parsed.data.ids,
     p_category_id: parsed.data.categoryId,
     p_learn: true,
   });
-  return error ? failed("categorize", error) : done();
+  if (error) return failed("categorize", error);
+  const after = context && before ? await ruleStates(supabase, context.spaceId, context.merchantKeys).catch(() => null) : null;
+  done();
+  const rule = context && before && after ? firstRuleChange(before, after, context.merchantKeys, context.enabled) : null;
+  return rule ? { ok: true, rule } : { ok: true };
 }
 
 export async function setTreatment(transactionIds: string[], treatment: "budget" | "transfer" | "excluded"): Promise<ActionResult> {
@@ -99,7 +112,7 @@ const filtersSchema = z.object({
   q: z.string().max(60).optional(),
   accountId: uuid.optional(),
   categoryId: uuid.optional(),
-  view: z.enum(["all", "review", "incoming", "outgoing", "transfers", "excluded"]).optional(),
+  view: z.enum(["all", "review", "incoming", "outgoing", "transfers", "excluded", "auto"]).optional(),
   from: z.iso.date().optional(),
   to: z.iso.date().optional(),
 });

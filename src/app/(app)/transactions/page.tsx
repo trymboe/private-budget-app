@@ -11,7 +11,7 @@ import { addMonths, isValidMonthParam, monthEnd, monthStart } from "@/lib/dates"
 
 export const metadata: Metadata = { title: "Transactions" };
 
-const VIEWS = new Set(["all", "review", "incoming", "outgoing", "transfers", "excluded"]);
+const VIEWS = new Set(["all", "review", "incoming", "outgoing", "transfers", "excluded", "auto"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export default async function TransactionsPage({

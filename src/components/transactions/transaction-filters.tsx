@@ -17,6 +17,7 @@ const VIEWS = [
   ["incoming", "Money in"],
   ["transfers", "Transfers"],
   ["excluded", "Excluded"],
+  ["auto", "Auto-filed"],
 ] as const;
 
 /** Search box + view chips + a sheet for account, category and month filters. State lives in the URL. */

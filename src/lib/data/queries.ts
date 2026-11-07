@@ -16,7 +16,7 @@ type Row = Record<string, unknown>;
 
 const TX_SELECT = `id, user_id, account_id, status, effective_date, amount_minor, currency, original_amount_minor, original_currency,
   counterparty, description, merchant_key, treatment, needs_review, note, removed_at,
-  suggested_category_id, suggested_treatment, suggestion_reason,
+  suggested_category_id, suggested_treatment, suggestion_reason, auto_categorized_at,
   transaction_allocations ( category_id, amount_minor ),
   accounts!inner ( name, include_in_budget, is_synced, provider )`;
 
@@ -63,6 +63,7 @@ function toTransaction(r: Row, userId: string): TransactionListItem {
     isManual: account?.provider === "manual",
     isMine: r.user_id === userId,
     accountIncluded: account?.include_in_budget === true,
+    autoCategorized: r.auto_categorized_at != null,
   };
 }
 
@@ -254,7 +255,7 @@ export const getConnections = cache(async (scope: "space" | "all" = "space"): Pr
   let accountQuery = supabase
     .from("accounts")
     .select(
-      "id, user_id, space_id, connection_id, name, iban_masked, currency, is_synced, include_in_budget, history_requested_from, history_available_from, history_limited, initial_import_completed_at, last_synced_at, balance_minor, provider, created_at",
+      "id, user_id, space_id, connection_id, name, iban_masked, currency, is_synced, include_in_budget, history_requested_from, history_available_from, history_limited, initial_import_completed_at, last_synced_at, balance_minor, balance_at, balance_type, balance_reference_date, provider, created_at",
     )
     .order("created_at");
   if (scope === "space") accountQuery = accountQuery.eq("space_id", space.id);
@@ -280,6 +281,9 @@ export const getConnections = cache(async (scope: "space" | "all" = "space"): Pr
     initialImportCompletedAt: (a.initial_import_completed_at as string | null) ?? null,
     lastSyncedAt: (a.last_synced_at as string | null) ?? null,
     balanceMinor: a.balance_minor === null ? null : Number(a.balance_minor),
+    balanceAt: (a.balance_at as string | null) ?? null,
+    balanceType: (a.balance_type as string | null) ?? null,
+    balanceReferenceDate: (a.balance_reference_date as string | null) ?? null,
     provider: a.provider as string,
     spaceId: a.space_id as string,
     isMine: a.user_id === user.id,
@@ -353,7 +357,7 @@ export type TransactionFilters = {
   q?: string;
   accountId?: string;
   categoryId?: string;
-  view?: "all" | "review" | "incoming" | "outgoing" | "transfers" | "excluded";
+  view?: "all" | "review" | "incoming" | "outgoing" | "transfers" | "excluded" | "auto";
   from?: IsoDate;
   to?: IsoDate;
 };
@@ -398,6 +402,9 @@ export async function listTransactions(
       break;
     case "excluded":
       query = query.eq("treatment", "excluded");
+      break;
+    case "auto":
+      query = query.not("auto_categorized_at", "is", null);
       break;
   }
   const q = sanitizeSearch(filters.q);

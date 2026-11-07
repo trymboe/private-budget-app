@@ -2,12 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { stopAutoForTransaction } from "@/app/actions/auto";
 import { deleteManualTransaction } from "@/app/actions/manual";
 import { categorize, saveNote, setTreatment } from "@/app/actions/transactions";
+import { AutoBadge } from "@/components/auto/auto-badge";
+import { useRuleChangeToast } from "@/components/auto/rule-notice";
 import { CategoryMark } from "@/components/category-icon";
 import { Button } from "@/components/ui/button";
 import { Label, SectionLabel, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { TrackSubscription } from "@/components/subscriptions/track-subscription";
 import { useToast } from "@/components/ui/toast";
 import type { Category, TransactionListItem, Treatment } from "@/lib/data/types";
 import { formatDay, type IsoDate } from "@/lib/dates";
@@ -48,6 +52,7 @@ function TransactionDetails({
   const [mode, setMode] = useState<"details" | "split" | "edit">("details");
   const [note, setNote] = useState(tx.note ?? "");
   const [pending, startTransition] = useTransition();
+  const ruleToast = useRuleChangeToast();
 
   const merchant = displayMerchant(tx.counterparty, tx.description);
   const byId = new Map(categories.map((c) => [c.id, c]));
@@ -68,18 +73,44 @@ function TransactionDetails({
   }
 
   function pickCategory(c: Category) {
-    run(
-      () => categorize([tx!.id], c.id),
-      { ...tx!, treatment: "budget", needsReview: false, allocations: [{ categoryId: c.id, amountMinor: tx!.amountMinor }] },
-      `Saved as ${c.name}`,
-    );
+    onChanged({ ...tx, treatment: "budget", needsReview: false, autoCategorized: false, allocations: [{ categoryId: c.id, amountMinor: tx.amountMinor }] });
+    startTransition(async () => {
+      const result = await categorize([tx.id], c.id);
+      if (!result.ok) {
+        onChanged(tx);
+        toast({ message: result.error, tone: "error" });
+        return;
+      }
+      // A correction or a third confirmation can change the merchant's automatic filing: say so.
+      if (result.rule) ruleToast(result.rule, merchant, byId);
+      else toast({ message: `Saved as ${c.name}` });
+      router.refresh();
+    });
+  }
+
+  function stopAuto() {
+    startTransition(async () => {
+      const result = await stopAutoForTransaction(tx.id);
+      if (!result.ok) {
+        toast({ message: result.error, tone: "error" });
+        return;
+      }
+      toast({ message: `${merchant} will be suggested, not filed` });
+      router.refresh();
+    });
   }
 
   function pickTreatment(t: Treatment) {
     if (t === tx!.treatment) return;
     run(
       () => setTreatment([tx!.id], t),
-      { ...tx!, treatment: t, needsReview: t === "budget" ? tx!.allocations.length === 0 : false, allocations: t === "budget" ? tx!.allocations : [] },
+      {
+        ...tx!,
+        treatment: t,
+        needsReview: t === "budget" ? tx!.allocations.length === 0 : false,
+        allocations: t === "budget" ? tx!.allocations : [],
+        autoCategorized: false,
+      },
       t === "transfer" ? "Marked as transfer" : t === "excluded" ? "Excluded from budget" : "Counts toward budget",
     );
   }
@@ -206,6 +237,23 @@ function TransactionDetails({
                   })}
                 </ul>
               ) : null}
+              {tx.autoCategorized ? (
+                <div className="mt-3 rounded-md bg-sunken px-3 py-2.5 text-xs leading-relaxed text-ink-2">
+                  <p>
+                    <AutoBadge className="mr-1.5 align-[1px]" />
+                    Filed automatically, because you chose {(selectedId && byId.get(selectedId)?.name) || "this category"} for {merchant}{" "}
+                    several times in a row. Pick another category to correct it.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={stopAuto}
+                    disabled={pending}
+                    className="mt-1.5 font-medium text-ink underline-offset-4 hover:underline disabled:opacity-50"
+                  >
+                    Stop filing {merchant} automatically
+                  </button>
+                </div>
+              ) : null}
               {tx.needsReview && tx.suggestedCategoryId && byId.get(tx.suggestedCategoryId) ? (
                 <p className="mt-2 text-xs text-ink-2">Suggested: {byId.get(tx.suggestedCategoryId)!.name}</p>
               ) : null}
@@ -231,6 +279,8 @@ function TransactionDetails({
               onBlur={persistNote}
             />
           </div>
+
+          <TrackSubscription tx={tx} />
 
           {tx.isManual && tx.isMine ? (
             <div className="grid grid-cols-2 gap-2">

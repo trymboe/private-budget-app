@@ -31,9 +31,14 @@ export default async function BudgetPage({ searchParams }: { searchParams: Promi
       <PageHeader
         title="Budget"
         actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href="/budget/categories">Categories</Link>
-          </Button>
+          <>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/insights/months">Month over month</Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/budget/categories">Categories</Link>
+            </Button>
+          </>
         }
       />
 
