@@ -346,7 +346,7 @@ describe("buildSubscriptionList with several decisions for one merchant", () => 
       decision({ id: "d129", merchantKey: "apple", name: "Apple One", amountMinor: 12_900 }),
     ];
     const items = buildSubscriptionList(detectRecurring(charges, TODAY), order, charges, TODAY);
-    const byId = Object.fromEntries(items.map((i) => [i.decisionId, i]));
+    const byId = Object.fromEntries(items.map((i) => [i.decisionId, i])) as Record<string, (typeof items)[number]>;
     expect(byId.d129).toMatchObject({ amountMinor: 12_900, priceIncrease: null });
     expect(byId.d39).toMatchObject({ name: "iCloud", priceIncrease: null });
     expect(byId.d39.recentCharges.map((c) => c.amountMinor)).toEqual([3_900]);
