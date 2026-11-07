@@ -82,7 +82,9 @@ async function loadDecisions(spaceId: string): Promise<SubscriptionDecision[]> {
   const { data, error } = await supabase
     .from("subscriptions")
     .select("id, merchant_key, cadence, status, source, name, amount_minor, category_id, cancelled_on, transaction_id")
-    .eq("space_id", spaceId);
+    .eq("space_id", spaceId)
+    .order("created_at")
+    .order("id");
   if (error) {
     console.error("[data] subscription decisions failed", error.message);
     throw new Error("Could not load subscriptions.");

@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { displayMerchant, normalizeMerchant } from "@/lib/merchant";
 import { getActiveSpace } from "@/lib/spaces";
-import { CADENCES } from "@/lib/subscriptions";
+import { CADENCES, withinTolerance } from "@/lib/subscriptions";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "./transactions";
 
@@ -13,6 +13,8 @@ const uuid = z.uuid();
 const cadence = z.enum(CADENCES as [string, ...string[]]);
 
 const decisionInput = z.object({
+  /** The decision being changed; leave out to record a new one. */
+  id: uuid.nullable().optional(),
   merchantKey: z.string().trim().min(1).max(120),
   cadence,
   status: z.enum(["confirmed", "dismissed", "cancelled"]),
@@ -30,13 +32,65 @@ function failed(context: string, error: { message: string; code?: string } | nul
   return { ok: false, error: "That did not save. Please try again." };
 }
 
-/** Confirm, dismiss or cancel a subscription in the space being viewed (also used to undo). */
-export async function saveSubscriptionDecision(input: SubscriptionDecisionInput): Promise<ActionResult & { id?: string }> {
+/** An existing decision for this merchant and cadence at about this price. */
+async function findDecision(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  spaceId: string,
+  merchantKey: string,
+  every: string,
+  amountMinor: number,
+): Promise<
+  { ok: true; id: string | null; previous: SubscriptionDecisionInput | null } | { ok: false; error: { message: string; code?: string } }
+> {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("id, amount_minor, status, name, category_id, source, cancelled_on")
+    .eq("space_id", spaceId)
+    .eq("merchant_key", merchantKey)
+    .eq("cadence", every);
+  if (error) return { ok: false, error };
+  const close = (data ?? [])
+    .filter((r) => withinTolerance(Number(r.amount_minor), amountMinor))
+    .sort((a, b) => Math.abs(Number(a.amount_minor) - amountMinor) - Math.abs(Number(b.amount_minor) - amountMinor));
+  const row = close[0];
+  if (!row) return { ok: true, id: null, previous: null };
+  const previous: SubscriptionDecisionInput = {
+    id: row.id as string,
+    merchantKey,
+    cadence: every,
+    status: row.status as "confirmed" | "dismissed" | "cancelled",
+    name: row.name as string,
+    amountMinor: Number(row.amount_minor),
+    categoryId: (row.category_id as string | null) ?? null,
+    source: row.source as "detected" | "manual",
+    cancelledOn: (row.cancelled_on as string | null) ?? null,
+  };
+  return { ok: true, id: row.id as string, previous };
+}
+
+/**
+ * Confirm, dismiss or cancel a subscription in the space being viewed (also used
+ * to undo). `previous` is set when an existing decision was updated in place of
+ * a new one, so Undo can put it back instead of deleting it.
+ */
+export async function saveSubscriptionDecision(
+  input: SubscriptionDecisionInput,
+): Promise<ActionResult & { id?: string; previous?: SubscriptionDecisionInput | null }> {
   await requireUser();
   const parsed = decisionInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid request." };
   const d = parsed.data;
   const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
+  let id = d.id ?? null;
+  let previous: SubscriptionDecisionInput | null = null;
+  if (!id) {
+    // A new decision for a series someone already decided about (a second tap,
+    // a stale page, or the partner at the same time) updates that decision.
+    const found = await findDecision(supabase, space.id, d.merchantKey, d.cadence, d.amountMinor);
+    if (!found.ok) return failed("subscription", found.error);
+    id = found.id;
+    previous = found.previous;
+  }
   const { data, error } = await supabase.rpc("save_subscription", {
     p_space: space.id,
     p_merchant_key: d.merchantKey,
@@ -48,10 +102,11 @@ export async function saveSubscriptionDecision(input: SubscriptionDecisionInput)
     p_source: d.source,
     p_transaction_id: null,
     p_cancelled_on: d.cancelledOn ?? null,
+    p_id: id,
   });
   if (error) return failed("subscription", error);
   revalidatePath("/", "layout");
-  return { ok: true, id: data as string };
+  return { ok: true, id: data as string, previous };
 }
 
 /** Forget a decision: a detected subscription goes back to "new", a manual one disappears. */
@@ -87,6 +142,11 @@ export async function trackTransactionAsSubscription(transactionId: string, ever
   if (!key) return { ok: false, error: "This payment has no merchant to follow." };
   const allocations = (tx.transaction_allocations as { category_id: string }[] | null) ?? [];
 
+  // Already tracking this merchant at about this price: update that decision
+  // instead of adding a second one for the same series.
+  const same = await findDecision(supabase, tx.space_id as string, key, parsed.data.cadence, -amount);
+  if (!same.ok) return failed("track subscription", same.error);
+
   const { data, error } = await supabase.rpc("save_subscription", {
     // The transaction's own space: RLS already limits it to one you belong to.
     p_space: tx.space_id as string,
@@ -99,6 +159,7 @@ export async function trackTransactionAsSubscription(transactionId: string, ever
     p_source: "manual",
     p_transaction_id: tx.id as string,
     p_cancelled_on: null,
+    p_id: same.id,
   });
   if (error) return failed("track subscription", error);
   revalidatePath("/", "layout");

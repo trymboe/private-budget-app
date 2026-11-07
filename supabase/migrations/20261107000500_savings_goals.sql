@@ -99,6 +99,9 @@ create policy savings_goal_contributions_delete on public.savings_goal_contribut
   using (space_id in (select public.my_space_ids()));
 
 -- The browser may choose a goal's space when creating it, never move it later.
+-- Start from nothing: a database without 20261030000500 (default privileges
+-- locked) would otherwise hand anon and authenticated every privilege here.
+revoke all on public.savings_goals, public.savings_goal_contributions from anon, authenticated;
 grant select, delete on public.savings_goals to authenticated;
 grant insert (space_id, name, target_minor, target_date, icon, color, starts_on, account_id, account_basis)
   on public.savings_goals to authenticated;
@@ -133,6 +136,7 @@ select g.id as goal_id,
   from public.savings_goals g
   left join public.accounts a on a.id = g.account_id;
 
+revoke all on public.savings_goal_progress from anon, authenticated;
 grant select on public.savings_goal_progress to authenticated;
 
 -- ---------------------------------------------------------------------------

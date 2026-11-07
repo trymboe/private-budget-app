@@ -343,18 +343,83 @@ export function buildSubscriptionList(
   charges: Charge[],
   today: IsoDate,
 ): SubscriptionItem[] {
-  // A decision applies to the series with the same merchant and cadence; if one
-  // merchant has two such series, to the one closest to the accepted price.
+  // A decision applies to a detected series with the same merchant and cadence.
+  // With several series or decisions per merchant, pairs are assigned closest
+  // price first, and only when the accepted price matches one of the series'
+  // charges (or the series holds the decision's transaction). A merchant with one
+  // decision and one series always pairs them, so a big price rise still shows as
+  // "Price up" rather than as a new subscription.
   const claimed = new Map<DetectedSeries, SubscriptionDecision>();
-  const unmatched: SubscriptionDecision[] = [];
+  const used = new Set<SubscriptionDecision>();
+  const sameKind = (s: DetectedSeries, d: SubscriptionDecision) => s.merchantKey === d.merchantKey && s.cadence === d.cadence;
+  const pairs: { s: DetectedSeries; d: SubscriptionDecision; distance: number }[] = [];
   for (const d of decisions) {
-    const candidates = detected.filter((s) => s.merchantKey === d.merchantKey && s.cadence === d.cadence && !claimed.has(s));
-    if (candidates.length === 0) {
-      unmatched.push(d);
-      continue;
+    for (const s of detected) {
+      if (!sameKind(s, d)) continue;
+      const fits = s.charges.some((c) => c.id === d.transactionId || withinTolerance(c.amountMinor, d.amountMinor));
+      if (fits) pairs.push({ s, d, distance: Math.abs(s.amountMinor - d.amountMinor) });
     }
-    candidates.sort((a, b) => Math.abs(a.amountMinor - d.amountMinor) - Math.abs(b.amountMinor - d.amountMinor));
-    claimed.set(candidates[0], d);
+  }
+  pairs.sort((a, b) => a.distance - b.distance || (a.d.id < b.d.id ? -1 : 1));
+  for (const { s, d } of pairs) {
+    if (claimed.has(s) || used.has(d)) continue;
+    claimed.set(s, d);
+    used.add(d);
+  }
+  // A decision left over (its price moved past tolerance, say an old price rise)
+  // takes the closest series still free, unless it has charges of its own at
+  // its accepted price that are not shown anywhere yet. The sole decision for a
+  // merchant and cadence always takes a sole free series.
+  const inClaimed = new Set<string>();
+  for (const s of claimed.keys()) for (const c of s.charges) inClaimed.add(c.id);
+  const hasOwnCharges = (d: SubscriptionDecision) =>
+    charges.some(
+      (c) => c.merchantKey === d.merchantKey && !inClaimed.has(c.id) && (c.id === d.transactionId || withinTolerance(c.amountMinor, d.amountMinor)),
+    );
+  const leftover: { s: DetectedSeries; d: SubscriptionDecision; distance: number }[] = [];
+  for (const d of decisions) {
+    if (used.has(d)) continue;
+    const free = detected.filter((s) => sameKind(s, d) && !claimed.has(s));
+    const rivals = decisions.filter((o) => o !== d && !used.has(o) && o.merchantKey === d.merchantKey && o.cadence === d.cadence);
+    const sole = free.length === 1 && rivals.length === 0;
+    if (!sole && hasOwnCharges(d)) continue;
+    // A twin of a decision already shown (saved twice): leave it to the duplicate check below.
+    if (!hasOwnCharges(d) && chargesForDecision(d, charges).some((c) => inClaimed.has(c.id))) continue;
+    // Only a confirmed decision may take over a series at another price. A dismissed
+    // or cancelled one does so only as the one decision for the merchant's one series,
+    // so an old "not a subscription" never hides a new, unrelated subscription.
+    if (d.status !== "confirmed") {
+      const strictSole =
+        detected.filter((x) => sameKind(x, d)).length === 1 &&
+        !decisions.some((o) => o !== d && o.merchantKey === d.merchantKey && o.cadence === d.cadence);
+      if (!strictSole) continue;
+    }
+    for (const s of free) {
+      // Next to other series, only a plausible price change: a rise of up to
+      // double, or a drop within tolerance. Anything else is another product.
+      const plausible = s.amountMinor <= d.amountMinor * 2 && (s.amountMinor >= d.amountMinor || withinTolerance(s.amountMinor, d.amountMinor));
+      if (!sole && !plausible) continue;
+      leftover.push({ s, d, distance: Math.abs(s.amountMinor - d.amountMinor) });
+    }
+  }
+  leftover.sort((a, b) => a.distance - b.distance || (a.d.id < b.d.id ? -1 : 1));
+  for (const { s, d } of leftover) {
+    if (claimed.has(s) || used.has(d)) continue;
+    claimed.set(s, d);
+    used.add(d);
+  }
+
+  // Charges already shown under a series never count again for a decision
+  // without one. A detected decision left with none of its own is a duplicate
+  // of one already shown (say, confirmed twice from two screens) and is skipped.
+  const shownCharges = new Set<string>();
+  for (const s of claimed.keys()) for (const c of s.charges) shownCharges.add(c.id);
+  const unmatched: { d: SubscriptionDecision; charges: Charge[] }[] = [];
+  for (const d of decisions) {
+    if (used.has(d)) continue;
+    const own = chargesForDecision(d, charges).filter((c) => !shownCharges.has(c.id));
+    if (own.length === 0 && d.source === "detected" && chargesForDecision(d, charges).length > 0) continue;
+    unmatched.push({ d, charges: own });
   }
 
   const items: SubscriptionItem[] = [];
@@ -364,10 +429,10 @@ export function buildSubscriptionList(
     if (!d && !s.active) continue;
     items.push(makeItem(d, s.charges, s, today));
   }
-  for (const d of unmatched) items.push(makeItem(d, chargesForDecision(d, charges), null, today));
+  for (const { d, charges: own } of unmatched) items.push(makeItem(d, own, null, today));
 
-  // Two detected series with the same merchant and cadence would share a key;
-  // keep keys unique for the UI (only the first can carry a decision).
+  // Two series with the same merchant and cadence would share a key; keep keys
+  // unique for the UI. Each carries its own decision (saved by decisionId).
   const seen = new Map<string, number>();
   for (const item of items) {
     const n = seen.get(item.key) ?? 0;

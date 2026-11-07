@@ -63,6 +63,7 @@ export function SubscriptionsView({ items, totals, categories, today, historyFro
 
   function inputFor(item: SubscriptionItem, status: Status, amountMinor: number): SubscriptionDecisionInput {
     return {
+      id: item.decisionId,
       merchantKey: item.merchantKey,
       cadence: item.cadence,
       status,
@@ -92,7 +93,8 @@ export function SubscriptionsView({ items, totals, categories, today, historyFro
           label: "Undo",
           onClick: () =>
             startTransition(async () => {
-              const undo = before ? await saveSubscriptionDecision(before) : result.id ? await forgetSubscription(result.id) : null;
+              const restore = before ?? result.previous ?? null;
+              const undo = restore ? await saveSubscriptionDecision(restore) : result.id ? await forgetSubscription(result.id) : null;
               if (undo && !undo.ok) toast({ message: undo.error, tone: "error" });
               router.refresh();
             }),

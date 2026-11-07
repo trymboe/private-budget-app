@@ -27,11 +27,12 @@ type SaveArgs = {
   source?: string;
   tx?: string | null;
   cancelledOn?: string | null;
+  id?: string | null;
 };
 
 const save = (a: SaveArgs) =>
   db
-    .query<{ id: string }>(`select public.save_subscription($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) as id`, [
+    .query<{ id: string }>(`select public.save_subscription($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) as id`, [
       a.space,
       a.key ?? "netflix",
       a.cadence ?? "monthly",
@@ -42,6 +43,7 @@ const save = (a: SaveArgs) =>
       a.source ?? "detected",
       a.tx ?? null,
       a.cancelledOn ?? null,
+      a.id ?? null,
     ])
     .then((r) => r.rows[0].id);
 
@@ -76,20 +78,44 @@ describe("saving decisions", () => {
   it("creates a decision, then updates it in place through the same function", async () => {
     const id = await db.asUser(TRYM, () => save({ space: trymSpace, category: trymCategory }));
     // Same merchant and cadence: the existing row is updated, not duplicated.
-    const again = await db.asUser(TRYM, () => save({ space: trymSpace, amount: 14_900, name: "Netflix Standard", category: trymCategory }));
+    const again = await db.asUser(TRYM, () => save({ id, space: trymSpace, amount: 14_900, name: "Netflix Standard", category: trymCategory }));
     expect(again).toBe(id);
     const { rows } = await db.asUser(TRYM, () => rowsFor(trymSpace));
     expect(rows).toEqual([{ merchant_key: "netflix", status: "confirmed", amount_minor: "14900", cancelled_on: null, name: "Netflix Standard" }]);
   });
 
   it("stamps a cancellation date, and clears it when confirmed again", async () => {
-    await db.asUser(TRYM, () => save({ space: trymSpace, status: "cancelled", cancelledOn: "2026-11-01" }));
+    const id = (await db.query<{ id: string }>(`select id from public.subscriptions where space_id = $1 and merchant_key = 'netflix'`, [trymSpace])).rows[0].id;
+    await db.asUser(TRYM, () => save({ id, space: trymSpace, status: "cancelled", cancelledOn: "2026-11-01" }));
     expect((await db.asUser(TRYM, () => rowsFor(trymSpace))).rows[0]).toMatchObject({ status: "cancelled", cancelled_on: "2026-11-01" });
     // Saving "cancelled" again without a date keeps the original date.
-    await db.asUser(TRYM, () => save({ space: trymSpace, status: "cancelled" }));
+    await db.asUser(TRYM, () => save({ id, space: trymSpace, status: "cancelled" }));
     expect((await db.asUser(TRYM, () => rowsFor(trymSpace))).rows[0].cancelled_on).toBe("2026-11-01");
-    await db.asUser(TRYM, () => save({ space: trymSpace, status: "confirmed" }));
+    await db.asUser(TRYM, () => save({ id, space: trymSpace, status: "confirmed" }));
     expect((await db.asUser(TRYM, () => rowsFor(trymSpace))).rows[0]).toMatchObject({ status: "confirmed", cancelled_on: null });
+  });
+
+  it("keeps two series of one merchant and cadence as separate decisions", async () => {
+    const small = await db.asUser(TRYM, () => save({ space: trymSpace, key: "apple", name: "iCloud", amount: 3_900 }));
+    const big = await db.asUser(TRYM, () => save({ space: trymSpace, key: "apple", name: "Apple One", amount: 12_900 }));
+    expect(big).not.toBe(small);
+    await db.asUser(TRYM, () => save({ id: big, space: trymSpace, key: "apple", status: "dismissed", name: "Apple One", amount: 12_900 }));
+    const { rows } = await db.query<{ id: string; status: string }>(
+      `select id, status from public.subscriptions where merchant_key = 'apple' order by amount_minor`,
+    );
+    expect(rows).toEqual([
+      { id: small, status: "confirmed" },
+      { id: big, status: "dismissed" },
+    ]);
+    await db.query(`delete from public.subscriptions where merchant_key = 'apple'`);
+  });
+
+  it("only updates a decision by id within its own space, merchant and cadence", async () => {
+    const id = (await db.query<{ id: string }>(`select id from public.subscriptions where space_id = $1 and merchant_key = 'netflix'`, [trymSpace])).rows[0].id;
+    await expect(db.asUser(TRYM, () => save({ id, space: trymSpace, key: "spotify" }))).rejects.toThrow(/not found/);
+    await expect(db.asUser(TRYM, () => save({ id, space: shared }))).rejects.toThrow(/not found/);
+    // The partner cannot reach it through their own space either.
+    await expect(db.asUser(PARTNER, () => save({ id, space: partnerSpace }))).rejects.toThrow(/not found/);
   });
 
   it("keeps the same merchant at another cadence as a separate decision", async () => {
@@ -107,6 +133,21 @@ describe("saving decisions", () => {
       `select source, transaction_id, created_by from public.subscriptions where merchant_key = 'sats'`,
     );
     expect(rows[0]).toEqual({ source: "manual", transaction_id: trymTx, created_by: TRYM });
+  });
+
+  it("lets go of the transaction when its account moves to another space", async () => {
+    const account = await createAccount(db, TRYM, "Flyttekonto", false);
+    const tx = await createTransaction(db, TRYM, account, -9_900, { merchantKey: "viaplay" });
+    const id = await db.asUser(TRYM, () =>
+      save({ space: trymSpace, key: "viaplay", name: "Viaplay", amount: 9_900, source: "manual", tx }),
+    );
+    await db.asUser(TRYM, () => db.transaction((t) => t.query(`select public.move_account_to_space($1, $2)`, [account, shared])));
+    const { rows } = await db.query<{ space_id: string; transaction_id: string | null }>(
+      `select space_id, transaction_id from public.subscriptions where id = $1`,
+      [id],
+    );
+    expect(rows[0]).toEqual({ space_id: trymSpace, transaction_id: null });
+    await db.query(`delete from public.subscriptions where id = $1`, [id]);
   });
 
   it("rejects bad input", async () => {
