@@ -39,10 +39,12 @@ async function findDecision(
   merchantKey: string,
   every: string,
   amountMinor: number,
-): Promise<{ ok: true; id: string | null } | { ok: false; error: { message: string; code?: string } }> {
+): Promise<
+  { ok: true; id: string | null; previous: SubscriptionDecisionInput | null } | { ok: false; error: { message: string; code?: string } }
+> {
   const { data, error } = await supabase
     .from("subscriptions")
-    .select("id, amount_minor")
+    .select("id, amount_minor, status, name, category_id, source, cancelled_on")
     .eq("space_id", spaceId)
     .eq("merchant_key", merchantKey)
     .eq("cadence", every);
@@ -50,23 +52,44 @@ async function findDecision(
   const close = (data ?? [])
     .filter((r) => withinTolerance(Number(r.amount_minor), amountMinor))
     .sort((a, b) => Math.abs(Number(a.amount_minor) - amountMinor) - Math.abs(Number(b.amount_minor) - amountMinor));
-  return { ok: true, id: (close[0]?.id as string | undefined) ?? null };
+  const row = close[0];
+  if (!row) return { ok: true, id: null, previous: null };
+  const previous: SubscriptionDecisionInput = {
+    id: row.id as string,
+    merchantKey,
+    cadence: every,
+    status: row.status as "confirmed" | "dismissed" | "cancelled",
+    name: row.name as string,
+    amountMinor: Number(row.amount_minor),
+    categoryId: (row.category_id as string | null) ?? null,
+    source: row.source as "detected" | "manual",
+    cancelledOn: (row.cancelled_on as string | null) ?? null,
+  };
+  return { ok: true, id: row.id as string, previous };
 }
 
-/** Confirm, dismiss or cancel a subscription in the space being viewed (also used to undo). */
-export async function saveSubscriptionDecision(input: SubscriptionDecisionInput): Promise<ActionResult & { id?: string }> {
+/**
+ * Confirm, dismiss or cancel a subscription in the space being viewed (also used
+ * to undo). `previous` is set when an existing decision was updated in place of
+ * a new one, so Undo can put it back instead of deleting it.
+ */
+export async function saveSubscriptionDecision(
+  input: SubscriptionDecisionInput,
+): Promise<ActionResult & { id?: string; previous?: SubscriptionDecisionInput | null }> {
   await requireUser();
   const parsed = decisionInput.safeParse(input);
   if (!parsed.success) return { ok: false, error: "Invalid request." };
   const d = parsed.data;
   const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
   let id = d.id ?? null;
+  let previous: SubscriptionDecisionInput | null = null;
   if (!id) {
     // A new decision for a series someone already decided about (a second tap,
     // a stale page, or the partner at the same time) updates that decision.
     const found = await findDecision(supabase, space.id, d.merchantKey, d.cadence, d.amountMinor);
     if (!found.ok) return failed("subscription", found.error);
     id = found.id;
+    previous = found.previous;
   }
   const { data, error } = await supabase.rpc("save_subscription", {
     p_space: space.id,
@@ -83,7 +106,7 @@ export async function saveSubscriptionDecision(input: SubscriptionDecisionInput)
   });
   if (error) return failed("subscription", error);
   revalidatePath("/", "layout");
-  return { ok: true, id: data as string };
+  return { ok: true, id: data as string, previous };
 }
 
 /** Forget a decision: a detected subscription goes back to "new", a manual one disappears. */

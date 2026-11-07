@@ -353,6 +353,20 @@ describe("buildSubscriptionList with several decisions for one merchant", () => 
     expect(summarizeSubscriptions(items).monthlyMinor).toBe(16_800);
   });
 
+  it("pairs a decision whose price moved past tolerance with its series, next to another series", () => {
+    const charges = [...monthly("2026-05-03", 6, 39, "apple"), ...monthly("2026-05-12", 6, 149, "apple")];
+    for (const decisions of [
+      [decision({ id: "d39", merchantKey: "apple", amountMinor: 3_900 }), decision({ id: "d99", merchantKey: "apple", amountMinor: 9_900 })],
+      [decision({ id: "d99", merchantKey: "apple", amountMinor: 9_900 })],
+    ]) {
+      const items = buildSubscriptionList(detectRecurring(charges, TODAY), decisions, charges, TODAY);
+      const d99 = items.find((i) => i.decisionId === "d99")!;
+      expect(d99).toMatchObject({ amountMinor: 14_900, priceIncrease: { fromMinor: 9_900, toMinor: 14_900 } });
+      expect(items).toHaveLength(2);
+      expect(summarizeSubscriptions(items).monthlyMinor).toBe(18_800);
+    }
+  });
+
   it("shows a decision saved twice for the same series only once", () => {
     const charges = monthly("2026-05-12", 6, 129, "apple");
     const twice = [

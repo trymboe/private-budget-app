@@ -366,14 +366,30 @@ export function buildSubscriptionList(
     claimed.set(s, d);
     used.add(d);
   }
+  // A decision left over (its price moved past tolerance, say an old price rise)
+  // takes the closest series still free, unless it has charges of its own at
+  // its accepted price that are not shown anywhere yet. The sole decision for a
+  // merchant and cadence always takes a sole free series.
+  const inClaimed = new Set<string>();
+  for (const s of claimed.keys()) for (const c of s.charges) inClaimed.add(c.id);
+  const hasOwnCharges = (d: SubscriptionDecision) =>
+    charges.some(
+      (c) => c.merchantKey === d.merchantKey && !inClaimed.has(c.id) && (c.id === d.transactionId || withinTolerance(c.amountMinor, d.amountMinor)),
+    );
+  const leftover: { s: DetectedSeries; d: SubscriptionDecision; distance: number }[] = [];
   for (const d of decisions) {
     if (used.has(d)) continue;
-    const series = detected.filter((s) => sameKind(s, d));
-    const others = decisions.filter((o) => o !== d && o.merchantKey === d.merchantKey && o.cadence === d.cadence);
-    if (series.length === 1 && others.length === 0 && !claimed.has(series[0])) {
-      claimed.set(series[0], d);
-      used.add(d);
-    }
+    const free = detected.filter((s) => sameKind(s, d) && !claimed.has(s));
+    const rivals = decisions.filter((o) => o !== d && !used.has(o) && o.merchantKey === d.merchantKey && o.cadence === d.cadence);
+    const sole = free.length === 1 && rivals.length === 0;
+    if (!sole && hasOwnCharges(d)) continue;
+    for (const s of free) leftover.push({ s, d, distance: Math.abs(s.amountMinor - d.amountMinor) });
+  }
+  leftover.sort((a, b) => a.distance - b.distance || (a.d.id < b.d.id ? -1 : 1));
+  for (const { s, d } of leftover) {
+    if (claimed.has(s) || used.has(d)) continue;
+    claimed.set(s, d);
+    used.add(d);
   }
 
   // Charges already shown under a series never count again for a decision
