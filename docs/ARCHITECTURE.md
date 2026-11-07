@@ -139,6 +139,12 @@ shared category can never be put on a private transaction.
 - `transaction_allocations`: category assignment. One row normally, several for a
   split. A deferred constraint trigger guarantees allocations sum exactly to the
   transaction amount at commit.
+- `savings_goals` / `savings_goal_contributions`: savings goals in a space (target,
+  optional date, icon, colour, completed/archived). Progress is hand-logged
+  contributions plus, optionally, one linked account in the same space: money in
+  since `starts_on` (from transactions) or its balance when known
+  (`src/lib/goals.ts` chooses; the `savings_goal_progress` view supplies both). An
+  account moving space unlinks itself instead of dragging a private goal along.
 - `sync_runs`: one row per sync with counts and an error code. A partial unique
   index allows only one running sync per account.
 

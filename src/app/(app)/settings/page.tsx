@@ -25,6 +25,7 @@ export default async function SettingsPage() {
     },
     { href: "/settings/sharing", label: "Sharing", detail: partner ? `With ${partner.name ?? "your partner"}` : "Invite your partner" },
     { href: "/budget/categories", label: "Categories", detail: "Names, colours, order" },
+    { href: "/goals", label: "Savings goals", detail: "Targets and progress" },
     { href: "/welcome", label: "Setup guide", detail: profile.onboarding.completed ? "Completed" : "In progress" },
     { href: "/settings/password", label: "Change password", detail: "" },
   ];
