@@ -32,6 +32,7 @@ export default async function SettingsPage() {
       label: "Auto-categorised merchants",
       detail: !auto.enabled ? "Off" : auto.merchants === 0 ? "None yet" : `${auto.merchants} ${auto.merchants === 1 ? "merchant" : "merchants"}`,
     },
+    { href: "/subscriptions", label: "Subscriptions", detail: "Fixed costs and renewals" },
     { href: "/welcome", label: "Setup guide", detail: profile.onboarding.completed ? "Completed" : "In progress" },
     { href: "/settings/password", label: "Change password", detail: "" },
   ];

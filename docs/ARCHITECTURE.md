@@ -159,6 +159,12 @@ shared category can never be put on a private transaction.
   account moving space unlinks itself instead of dragging a private goal along.
 - `sync_runs`: one row per sync with counts and an error code. A partial unique
   index allows only one running sync per account.
+- `subscriptions`: decisions about recurring payments, per space and keyed by
+  merchant and cadence: confirmed, dismissed ("not a subscription") or cancelled,
+  plus ones added by hand from a transaction, with the last accepted price.
+  Detection itself is pure app code (`src/lib/subscriptions.ts`: same merchant key,
+  a weekly/monthly/quarterly/yearly rhythm, similar amounts) and is never stored.
+  Written only through `save_subscription`; column grants keep the key and space fixed.
 
 Views `monthly_category_totals` and `monthly_cash_flow` (security invoker, so RLS
 applies) feed Home and Insights.

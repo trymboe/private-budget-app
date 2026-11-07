@@ -5,6 +5,7 @@ import { CategoryMark } from "@/components/category-icon";
 import { DataNotes, ConsentReminder } from "@/components/data-notes";
 import { HomeGoalsCard } from "@/components/goals/home-goals-card";
 import { Page } from "@/components/page";
+import { SubscriptionsCard } from "@/components/subscriptions/subscriptions-card";
 import { Money } from "@/components/ui/amount";
 import { BudgetBar } from "@/components/ui/progress";
 import type { AutoFiledSummary } from "@/lib/auto-categorise";
@@ -95,6 +96,7 @@ export function HomeView(props: HomeViewProps) {
             </HomeSection>
           ) : null}
           {summary.totalBudget > 0 ? <WatchList lines={watch} month={summary.month} /> : null}
+          <SubscriptionsCard />
           <HomeGoalsCard />
         </div>
 
