@@ -1,4 +1,5 @@
 import { ArrowLeftRight, CircleDashed, EyeOff, Split } from "lucide-react";
+import { AutoBadge } from "@/components/auto/auto-badge";
 import { CategoryMark } from "@/components/category-icon";
 import { Amount } from "@/components/ui/amount";
 import type { Category, TransactionListItem } from "@/lib/data/types";
@@ -62,6 +63,7 @@ export function TransactionRow({
               Pending
             </span>
           ) : null}
+          {tx.autoCategorized ? <AutoBadge /> : null}
         </span>
         <span className="mt-0.5 block truncate text-xs text-ink-3">{subline}</span>
       </span>

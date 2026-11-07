@@ -16,7 +16,7 @@ type Row = Record<string, unknown>;
 
 const TX_SELECT = `id, user_id, account_id, status, effective_date, amount_minor, currency, original_amount_minor, original_currency,
   counterparty, description, merchant_key, treatment, needs_review, note, removed_at,
-  suggested_category_id, suggested_treatment, suggestion_reason,
+  suggested_category_id, suggested_treatment, suggestion_reason, auto_categorized_at,
   transaction_allocations ( category_id, amount_minor ),
   accounts!inner ( name, include_in_budget, is_synced, provider )`;
 
@@ -63,6 +63,7 @@ function toTransaction(r: Row, userId: string): TransactionListItem {
     isManual: account?.provider === "manual",
     isMine: r.user_id === userId,
     accountIncluded: account?.include_in_budget === true,
+    autoCategorized: r.auto_categorized_at != null,
   };
 }
 
@@ -356,7 +357,7 @@ export type TransactionFilters = {
   q?: string;
   accountId?: string;
   categoryId?: string;
-  view?: "all" | "review" | "incoming" | "outgoing" | "transfers" | "excluded";
+  view?: "all" | "review" | "incoming" | "outgoing" | "transfers" | "excluded" | "auto";
   from?: IsoDate;
   to?: IsoDate;
 };
@@ -401,6 +402,9 @@ export async function listTransactions(
       break;
     case "excluded":
       query = query.eq("treatment", "excluded");
+      break;
+    case "auto":
+      query = query.not("auto_categorized_at", "is", null);
       break;
   }
   const q = sanitizeSearch(filters.q);

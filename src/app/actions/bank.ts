@@ -179,7 +179,9 @@ export async function syncNow(connectionId: string): Promise<ActionResult & { me
   const failed = results.find((r) => !r.ok);
   if (failed && !failed.ok) return { ok: false, error: failed.message };
   const inserted = results.reduce((n, r) => n + (r.ok ? r.inserted : 0), 0);
-  return { ok: true, message: inserted === 0 ? "Up to date" : `${inserted} new ${inserted === 1 ? "transaction" : "transactions"}` };
+  const auto = results.reduce((n, r) => n + (r.ok ? r.autoCategorized : 0), 0);
+  const fresh = `${inserted} new ${inserted === 1 ? "transaction" : "transactions"}`;
+  return { ok: true, message: inserted === 0 ? "Up to date" : auto > 0 ? `${fresh} · ${auto} filed automatically` : fresh };
 }
 
 /**

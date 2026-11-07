@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { HomeView } from "@/components/home/home-view";
 import { summarizeBalances } from "@/lib/balances";
+import { getRecentAutoFiled } from "@/lib/data/auto";
 import { getConnections, getMonthView, getProfile, getToday } from "@/lib/data/queries";
 import { monthStart } from "@/lib/dates";
 
@@ -17,7 +18,7 @@ export default async function HomePage() {
   const view = await getMonthView(monthStart(today));
   if (!profile.onboarding.completed && view.categories.length === 0) redirect("/welcome");
   // Accounts in the space being viewed (RLS keeps a partner's private ones out).
-  const connections = await getConnections();
+  const [connections, autoFiled] = await Promise.all([getConnections(), getRecentAutoFiled()]);
   const now = requestTime();
   return (
     <HomeView
@@ -31,6 +32,7 @@ export default async function HomePage() {
       notes={view.notes}
       connections={connections}
       balances={summarizeBalances(connections, now)}
+      autoFiled={autoFiled}
     />
   );
 }

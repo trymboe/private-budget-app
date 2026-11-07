@@ -69,6 +69,14 @@ tests/db/              database tests on PGlite
    reorders, so your thumb learns it. Transfer, Exclude, Split and Skip are one tap
    away. "Also apply to N more from this merchant" handles bulk. Every decision has Undo.
    Keyboard: 1–9, Enter, S.
+   **Trusted merchants.** Once a merchant has been filed in the same category 3 times
+   in a row, new transactions from it are filed automatically during sync and skip
+   review. The review flow says so when it happens ("Rema 1000 will now be filed as
+   Groceries automatically", with Turn off); auto-filed rows carry an "Auto" badge;
+   Home and the empty review queue mention what was filed this week. Correcting one
+   moves the rule to the new category with one confirmation (no longer automatic),
+   with "Just this once" to keep the old rule. Settings → Auto-categorised merchants
+   has the on/off switch for the space and per-merchant switches, category and removal.
 5. **Transactions.** Search, filter by month, category, account, status, or "needs
    review"; tap any row to change category, split, treatment or add a note.
 6. **Budget.** Set amounts per category per month. A new month is copied from the
@@ -131,11 +139,15 @@ shared category can never be put on a private transaction.
   excluded from the pace model), sort order, `archived_at`, `merged_into_id`.
 - `monthly_budgets`: one amount per category per month (a snapshot, so changing
   next month never rewrites history).
-- `categorization_rules`: learned merchant → category rules.
+- `categorization_rules`: learned merchant → category rules. `confirmations` counts
+  same-category decisions in a row; at 3 (`auto_categorize_threshold()`) and with
+  `auto_enabled` the rule files new transactions itself. `spaces.auto_categorize` turns
+  this off for a whole space (changed through `set_auto_categorize`).
 - `transactions`: bank-owned fields (amount, dates, status, counterparty,
   description, `provider_ref`, `fingerprint`, `bank_meta`) and user-owned fields
   (`treatment`, `needs_review`, `note`). Signed `amount_minor` (negative = money
-  out). `removed_at` soft-deletes pending items the bank stopped returning.
+  out). `auto_categorized_at` is set only by sync (`apply_auto_categorization`,
+  server only) and cleared by a trigger once someone decides on the transaction. `removed_at` soft-deletes pending items the bank stopped returning.
 - `transaction_allocations`: category assignment. One row normally, several for a
   split. A deferred constraint trigger guarantees allocations sum exactly to the
   transaction amount at commit.
@@ -197,7 +209,9 @@ nothing the second time.
 6. **Write** only bank-owned fields. Categories, notes and treatment are never in
    the update, so a sync cannot undo your work. If a booked amount differs from the
    pending one, a single category follows the new amount; a split is cleared and the
-   transaction returns to review.
+   transaction returns to review. New rows from trusted merchants are then filed
+   automatically (after transfer suggestions, so a likely transfer is never filed
+   as spending); only rows inserted by this run qualify, so re-running changes nothing.
 7. **Bookkeep**: earliest date actually received, whether the bank limited history,
    balance, last sync; release the lock.
 

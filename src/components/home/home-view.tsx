@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { ArrowRight, Check, Settings } from "lucide-react";
+import { AutoFiledNotice } from "@/components/auto/auto-filed-notice";
 import { CategoryMark } from "@/components/category-icon";
 import { DataNotes, ConsentReminder } from "@/components/data-notes";
 import { HomeGoalsCard } from "@/components/goals/home-goals-card";
 import { Page } from "@/components/page";
 import { Money } from "@/components/ui/amount";
 import { BudgetBar } from "@/components/ui/progress";
+import type { AutoFiledSummary } from "@/lib/auto-categorise";
 import type { BalanceOverview } from "@/lib/balances";
 import type { CategoryLine, MonthSummary } from "@/lib/budget";
 import type { DataNote } from "@/lib/data/queries";
@@ -29,6 +31,8 @@ export type HomeViewProps = {
   connections: ConnectionSummary[];
   /** Money in accounts for the space being viewed; null when it has no bank accounts. */
   balances: BalanceOverview | null;
+  /** Transactions trusted merchants filed by themselves recently (see auto-categorise). */
+  autoFiled?: AutoFiledSummary | null;
 };
 
 const kr = (minor: number) => formatMoney(minor, "NOK", { decimals: "never" });
@@ -44,7 +48,7 @@ const kr = (minor: number) => formatMoney(minor, "NOK", { decimals: "never" });
  * New cards go in as one <HomeSection> in the block they belong to.
  */
 export function HomeView(props: HomeViewProps) {
-  const { summary, today, reviewCount, hasAccounts, hasCategories, onboarding, notes, connections, balances } = props;
+  const { summary, today, reviewCount, hasAccounts, hasCategories, onboarding, notes, connections, balances, autoFiled } = props;
   const now = new Date(props.now);
   const flexible = summary.lines.filter((l) => !l.category.isFixed);
   const fixed = summary.lines.filter((l) => l.category.isFixed && (l.budget > 0 || l.spent !== 0));
@@ -53,6 +57,7 @@ export function HomeView(props: HomeViewProps) {
 
   const attention = [
     reviewCount > 0 ? <ReviewPrompt key="review" count={reviewCount} /> : null,
+    <AutoFiledNotice key="auto" summary={autoFiled} />,
     <ConsentReminder key="consent" connections={connections} today={today} />,
     !hasAccounts ? <ConnectPrompt key="connect" /> : null,
     !onboarding.completed && hasCategories ? <FinishSetup key="setup" profile={onboarding} /> : null,

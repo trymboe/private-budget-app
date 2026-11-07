@@ -41,6 +41,8 @@ export type TransactionListItem = {
   /** Came from the signed-in user's own bank or hand entry (not their partner's). */
   isMine: boolean;
   accountIncluded: boolean;
+  /** Filed by a trusted merchant rule during sync; nobody has looked at it yet. */
+  autoCategorized: boolean;
 };
 
 export type ConnectionSummary = {
