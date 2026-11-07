@@ -24,6 +24,12 @@ alter table public.spaces add column auto_categorize boolean not null default tr
 alter table public.categorization_rules add column auto_enabled boolean not null default true;
 alter table public.transactions add column auto_categorized_at timestamptz;
 
+-- Rules learned before this feature existed have never shown the "will now be
+-- filed automatically" notice. Hold them one confirmation short of trusted, so
+-- nothing is filed without review until the person confirms the merchant once
+-- more and sees the notice (with its Turn off button).
+update public.categorization_rules set confirmations = 2 where confirmations > 2;
+
 create index transactions_space_auto_idx on public.transactions (space_id, auto_categorized_at desc)
   where auto_categorized_at is not null;
 

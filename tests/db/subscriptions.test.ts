@@ -109,6 +109,21 @@ describe("saving decisions", () => {
     expect(rows[0]).toEqual({ source: "manual", transaction_id: trymTx, created_by: TRYM });
   });
 
+  it("lets go of the transaction when its account moves to another space", async () => {
+    const account = await createAccount(db, TRYM, "Flyttekonto", false);
+    const tx = await createTransaction(db, TRYM, account, -9_900, { merchantKey: "viaplay" });
+    const id = await db.asUser(TRYM, () =>
+      save({ space: trymSpace, key: "viaplay", name: "Viaplay", amount: 9_900, source: "manual", tx }),
+    );
+    await db.asUser(TRYM, () => db.transaction((t) => t.query(`select public.move_account_to_space($1, $2)`, [account, shared])));
+    const { rows } = await db.query<{ space_id: string; transaction_id: string | null }>(
+      `select space_id, transaction_id from public.subscriptions where id = $1`,
+      [id],
+    );
+    expect(rows[0]).toEqual({ space_id: trymSpace, transaction_id: null });
+    await db.query(`delete from public.subscriptions where id = $1`, [id]);
+  });
+
   it("rejects bad input", async () => {
     await expect(db.asUser(TRYM, () => save({ space: trymSpace, key: "x", cadence: "daily" }))).rejects.toThrow(/check/);
     await expect(db.asUser(TRYM, () => save({ space: trymSpace, key: "x", status: "maybe" }))).rejects.toThrow(/Unknown status/);

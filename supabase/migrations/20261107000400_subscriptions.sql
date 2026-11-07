@@ -41,6 +41,25 @@ create index subscriptions_space_idx on public.subscriptions (space_id);
 create trigger subscriptions_touch before update on public.subscriptions
   for each row execute function public.touch_updated_at();
 
+-- An account changing space: decisions made from one of its transactions stay
+-- where they are, but let go of the transaction. Without this, the
+-- (transaction_id, space_id) key would block move_account_to_space, because the
+-- account's transactions move with it.
+create function public.unlink_subscriptions_on_account_move() returns trigger
+language plpgsql set search_path = '' as $$
+begin
+  if new.space_id is distinct from old.space_id then
+    update public.subscriptions s set transaction_id = null
+      from public.transactions t
+     where t.account_id = old.id and s.transaction_id = t.id and s.space_id = old.space_id;
+  end if;
+  return new;
+end $$;
+
+create trigger accounts_unlink_subscriptions before update of space_id on public.accounts
+  for each row execute function public.unlink_subscriptions_on_account_move();
+revoke all on function public.unlink_subscriptions_on_account_move() from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------------
 -- Row Level Security and column grants
 -- ---------------------------------------------------------------------------
@@ -55,6 +74,9 @@ create policy subscriptions_all on public.subscriptions for all to authenticated
 -- the space, see 20261030000400 for why not a PostgREST upsert). The browser role
 -- gets exactly the columns that function writes; it can never move a row to
 -- another space or rewrite who created it.
+-- Start from nothing: a database without 20261030000500 (default privileges
+-- locked) would otherwise hand anon and authenticated every privilege here.
+revoke all on public.subscriptions from anon, authenticated;
 grant select, delete on public.subscriptions to authenticated;
 grant insert (space_id, merchant_key, cadence, status, source, name, amount_minor, category_id, transaction_id, cancelled_on)
   on public.subscriptions to authenticated;
