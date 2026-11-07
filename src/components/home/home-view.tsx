@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Settings } from "lucide-react";
 import { CategoryMark } from "@/components/category-icon";
 import { DataNotes, ConsentReminder } from "@/components/data-notes";
+import { HomeGoalsCard } from "@/components/goals/home-goals-card";
 import { Page } from "@/components/page";
 import { Money } from "@/components/ui/amount";
 import { SectionLabel } from "@/components/ui/field";
@@ -81,6 +82,8 @@ export function HomeView({ summary, today, reviewCount, hasAccounts, hasCategori
           </>
         )}
       </section>
+
+      <HomeGoalsCard />
 
       {summary.income !== 0 ? (
         <p className="mt-10 flex items-baseline justify-between border-t border-line pt-4 text-sm text-ink-2">
