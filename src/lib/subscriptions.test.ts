@@ -367,6 +367,33 @@ describe("buildSubscriptionList with several decisions for one merchant", () => 
     }
   });
 
+  it("does not let a decision saved twice take over the merchant's other series", () => {
+    const charges = [...monthly("2026-05-12", 6, 129, "apple"), ...monthly("2026-07-20", 4, 299, "apple")];
+    const twice = [
+      decision({ id: "a", merchantKey: "apple", amountMinor: 12_900 }),
+      decision({ id: "b", merchantKey: "apple", amountMinor: 12_900 }),
+    ];
+    const items = buildSubscriptionList(detectRecurring(charges, TODAY), twice, charges, TODAY);
+    expect(items.map((i) => [i.decisionId, i.status, i.amountMinor, i.priceIncrease])).toEqual([
+      ["a", "confirmed", 12_900, null],
+      [null, "new", 29_900, null],
+    ]);
+  });
+
+  it("never lets an old dismissed or cancelled decision hide a new series at another price", () => {
+    const charges = [...monthly("2026-05-12", 6, 129, "apple"), ...monthly("2026-07-20", 4, 299, "apple")];
+    for (const status of ["dismissed", "cancelled"] as const) {
+      const old = decision({ id: "old", merchantKey: "apple", amountMinor: 3_900, status, cancelledOn: status === "cancelled" ? "2025-06-01" : null });
+      for (const decisions of [[decision({ id: "d129", merchantKey: "apple", amountMinor: 12_900 }), old], [old]]) {
+        const items = buildSubscriptionList(detectRecurring(charges, TODAY), decisions, charges, TODAY);
+        const live = items.find((i) => i.amountMinor === 29_900)!;
+        expect(live.status).toBe("new");
+        expect(items.find((i) => i.decisionId === "old")?.status ?? status).toBe(status);
+        expect(items.some((i) => i.amountMinor === 12_900 && i.status !== "dismissed" && i.status !== "cancelled")).toBe(true);
+      }
+    }
+  });
+
   it("shows a decision saved twice for the same series only once", () => {
     const charges = monthly("2026-05-12", 6, 129, "apple");
     const twice = [

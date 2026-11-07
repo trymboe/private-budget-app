@@ -383,9 +383,21 @@ export function buildSubscriptionList(
     const rivals = decisions.filter((o) => o !== d && !used.has(o) && o.merchantKey === d.merchantKey && o.cadence === d.cadence);
     const sole = free.length === 1 && rivals.length === 0;
     if (!sole && hasOwnCharges(d)) continue;
+    // A twin of a decision already shown (saved twice): leave it to the duplicate check below.
+    if (!hasOwnCharges(d) && chargesForDecision(d, charges).some((c) => inClaimed.has(c.id))) continue;
+    // Only a confirmed decision may take over a series at another price. A dismissed
+    // or cancelled one does so only as the one decision for the merchant's one series,
+    // so an old "not a subscription" never hides a new, unrelated subscription.
+    if (d.status !== "confirmed") {
+      const strictSole =
+        detected.filter((x) => sameKind(x, d)).length === 1 &&
+        !decisions.some((o) => o !== d && o.merchantKey === d.merchantKey && o.cadence === d.cadence);
+      if (!strictSole) continue;
+    }
     for (const s of free) leftover.push({ s, d, distance: Math.abs(s.amountMinor - d.amountMinor) });
   }
-  leftover.sort((a, b) => a.distance - b.distance || (a.d.id < b.d.id ? -1 : 1));
+  // Live series first, then closest price.
+  leftover.sort((a, b) => Number(b.s.active) - Number(a.s.active) || a.distance - b.distance || (a.d.id < b.d.id ? -1 : 1));
   for (const { s, d } of leftover) {
     if (claimed.has(s) || used.has(d)) continue;
     claimed.set(s, d);
