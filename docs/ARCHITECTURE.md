@@ -76,6 +76,9 @@ tests/db/              database tests on PGlite
    category trends, this month's cumulative pace vs last month, and cash flow
    (money in vs out, including fixed costs and savings transfers) kept separate from
    budget variance. Incomplete months are marked and left out of averages.
+   **Month over month** (`/insights/months`, also linked from Budget) shows budget
+   vs spent for the total and each category over the last 3, 6 or 12 months, with
+   averages over complete months; tap a category for its months in detail.
 8. **Consent renewal.** Bank access lasts up to 180 days. From 14 days before it
    ends, Home shows a quiet reminder; after it ends, history stays and syncing stops
    until you renew (same BankID flow; accounts are re-attached, nothing is

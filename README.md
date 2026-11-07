@@ -13,7 +13,8 @@ your budget, without pretending to know more than the bank told it.
 - **Budget**: monthly snapshots copied forward, custom categories (rename, icon,
   colour, reorder, archive, merge).
 - **Insights**: budget vs actual over finished months, category trends, pace vs
-  last month, cash flow kept separate; incomplete months are marked.
+  last month, cash flow kept separate; incomplete months are marked. **Month over month**
+  compares budget and spending per category over the last 3, 6 or 12 months.
 - **Banks & accounts**: consent reminders 14 days ahead, one-tap renew, per-account
   "count toward budget".
 
