@@ -394,10 +394,15 @@ export function buildSubscriptionList(
         !decisions.some((o) => o !== d && o.merchantKey === d.merchantKey && o.cadence === d.cadence);
       if (!strictSole) continue;
     }
-    for (const s of free) leftover.push({ s, d, distance: Math.abs(s.amountMinor - d.amountMinor) });
+    for (const s of free) {
+      // Next to other series, only a plausible price change: a rise of up to
+      // double, or a drop within tolerance. Anything else is another product.
+      const plausible = s.amountMinor <= d.amountMinor * 2 && (s.amountMinor >= d.amountMinor || withinTolerance(s.amountMinor, d.amountMinor));
+      if (!sole && !plausible) continue;
+      leftover.push({ s, d, distance: Math.abs(s.amountMinor - d.amountMinor) });
+    }
   }
-  // Live series first, then closest price.
-  leftover.sort((a, b) => Number(b.s.active) - Number(a.s.active) || a.distance - b.distance || (a.d.id < b.d.id ? -1 : 1));
+  leftover.sort((a, b) => a.distance - b.distance || (a.d.id < b.d.id ? -1 : 1));
   for (const { s, d } of leftover) {
     if (claimed.has(s) || used.has(d)) continue;
     claimed.set(s, d);

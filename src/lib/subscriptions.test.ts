@@ -394,6 +394,18 @@ describe("buildSubscriptionList with several decisions for one merchant", () => 
     }
   });
 
+  it("does not let a leftover decision take over an unrelated newer product", () => {
+    const charges = [...monthly("2025-09-10", 10, 299, "apple"), ...monthly("2026-08-02", 4, 39, "apple")];
+    const items = buildSubscriptionList(
+      detectRecurring(charges, TODAY),
+      [decision({ id: "one", merchantKey: "apple", name: "Apple One", amountMinor: 19_900 })],
+      charges,
+      TODAY,
+    );
+    expect(items.find((i) => i.decisionId === "one")).toMatchObject({ amountMinor: 29_900, priceIncrease: { fromMinor: 19_900, toMinor: 29_900 } });
+    expect(items.find((i) => i.amountMinor === 3_900)?.status).toBe("new");
+  });
+
   it("shows a decision saved twice for the same series only once", () => {
     const charges = monthly("2026-05-12", 6, 129, "apple");
     const twice = [
