@@ -129,9 +129,10 @@ export function AutoMerchants({ settings, categories }: { settings: AutoSettings
                     )}
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-medium">{m.name}</span>
-                      <span className="mt-0.5 block truncate text-xs text-ink-3">
-                        {c ? `${c.name}${c.archived ? " (archived)" : ""}` : "Category removed"} · {timesLabel(m)}
+                      <span className="mt-0.5 block truncate text-xs text-ink-2">
+                        {c ? `${c.name}${c.archived ? " (archived)" : ""}` : "Category removed"}
                       </span>
+                      <span className="tnum mt-0.5 block text-2xs text-ink-3">{timesLabel(m)}</span>
                     </span>
                     {m.autoEnabled ? <AutoBadge /> : <span className="shrink-0 text-2xs text-ink-3">Auto off</span>}
                     <ChevronRight className="size-4 shrink-0 text-ink-3" aria-hidden />
@@ -157,8 +158,8 @@ export function AutoMerchants({ settings, categories }: { settings: AutoSettings
 }
 
 function timesLabel(m: AutoMerchant): string {
-  const chosen = `chosen ${m.confirmations}×`;
-  return m.autoFiledCount > 0 ? `${chosen} · ${m.autoFiledCount} filed automatically` : chosen;
+  const chosen = `Chosen ${m.confirmations} times`;
+  return m.autoFiledCount > 0 ? `${chosen} · ${m.autoFiledCount} auto-filed` : chosen;
 }
 
 function MerchantSheet({

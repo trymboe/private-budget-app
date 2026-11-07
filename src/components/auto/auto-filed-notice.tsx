@@ -24,7 +24,7 @@ export function AutoFiledNotice({ summary, className }: { summary: AutoFiledSumm
             {summary.count} {summary.count === 1 ? "transaction" : "transactions"} filed automatically
             {summary.days === 7 ? " this week" : ` in ${summary.days} days`}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-ink-2">{who} · check them</span>
+          <span className="mt-0.5 block truncate text-xs text-ink-2">{who}</span>
         </span>
       </span>
       <ArrowRight className="size-5 shrink-0 text-ink-2" aria-hidden />
