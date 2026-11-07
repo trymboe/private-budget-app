@@ -256,9 +256,12 @@ export async function syncAccount(input: {
     }
     try {
       const balance = await provider.fetchBalance({ sessionId, accountUid: account.provider_account_uid });
+      // A balance in another currency than the account would be mislabelled: skip it.
       if (balance && balance.currency === account.currency) {
         accountPatch.balance_minor = balance.amountMinor;
         accountPatch.balance_at = new Date().toISOString();
+        accountPatch.balance_type = balance.type;
+        accountPatch.balance_reference_date = balance.referenceDate;
       }
     } catch {
       // Balance is a nicety; never fail a sync over it.

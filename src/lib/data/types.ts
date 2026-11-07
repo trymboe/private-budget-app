@@ -70,6 +70,12 @@ export type AccountSummary = {
   initialImportCompletedAt: string | null;
   lastSyncedAt: string | null;
   balanceMinor: Minor | null;
+  /** When the app read the balance from the bank (ISO timestamp). */
+  balanceAt: string | null;
+  /** ISO 20022 balance type the bank reported (CLBD, ITAV, ...). */
+  balanceType: string | null;
+  /** The date the bank says the balance applies to, if it said. */
+  balanceReferenceDate: IsoDate | null;
   provider: string;
   spaceId: string;
   /** Owned by the signed-in user: only they can rename, toggle, move or remove it. */
