@@ -5,7 +5,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/auth";
 import { displayMerchant, normalizeMerchant } from "@/lib/merchant";
 import { getActiveSpace } from "@/lib/spaces";
-import { CADENCES } from "@/lib/subscriptions";
+import { CADENCES, withinTolerance } from "@/lib/subscriptions";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionResult } from "./transactions";
 
@@ -13,6 +13,8 @@ const uuid = z.uuid();
 const cadence = z.enum(CADENCES as [string, ...string[]]);
 
 const decisionInput = z.object({
+  /** The decision being changed; leave out to record a new one. */
+  id: uuid.nullable().optional(),
   merchantKey: z.string().trim().min(1).max(120),
   cadence,
   status: z.enum(["confirmed", "dismissed", "cancelled"]),
@@ -48,6 +50,7 @@ export async function saveSubscriptionDecision(input: SubscriptionDecisionInput)
     p_source: d.source,
     p_transaction_id: null,
     p_cancelled_on: d.cancelledOn ?? null,
+    p_id: d.id ?? null,
   });
   if (error) return failed("subscription", error);
   revalidatePath("/", "layout");
@@ -87,6 +90,17 @@ export async function trackTransactionAsSubscription(transactionId: string, ever
   if (!key) return { ok: false, error: "This payment has no merchant to follow." };
   const allocations = (tx.transaction_allocations as { category_id: string }[] | null) ?? [];
 
+  // Already tracking this merchant at about this price: update that decision
+  // instead of adding a second one for the same series.
+  const { data: existing, error: existingError } = await supabase
+    .from("subscriptions")
+    .select("id, amount_minor")
+    .eq("space_id", tx.space_id as string)
+    .eq("merchant_key", key)
+    .eq("cadence", parsed.data.cadence);
+  if (existingError) return failed("track subscription", existingError);
+  const same = (existing ?? []).find((s) => withinTolerance(Number(s.amount_minor), -amount));
+
   const { data, error } = await supabase.rpc("save_subscription", {
     // The transaction's own space: RLS already limits it to one you belong to.
     p_space: tx.space_id as string,
@@ -99,6 +113,7 @@ export async function trackTransactionAsSubscription(transactionId: string, ever
     p_source: "manual",
     p_transaction_id: tx.id as string,
     p_cancelled_on: null,
+    p_id: (same?.id as string | undefined) ?? null,
   });
   if (error) return failed("track subscription", error);
   revalidatePath("/", "layout");

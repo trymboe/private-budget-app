@@ -164,7 +164,7 @@ shared category can never be put on a private transaction.
   plus ones added by hand from a transaction, with the last accepted price.
   Detection itself is pure app code (`src/lib/subscriptions.ts`: same merchant key,
   a weekly/monthly/quarterly/yearly rhythm, similar amounts) and is never stored.
-  Written only through `save_subscription`; column grants keep the key and space fixed.
+  Written only through `save_subscription` (insert, or update by id); column grants keep the key and space fixed. One merchant may have several decisions at the same cadence, one per price series.
 
 Views `monthly_category_totals` and `monthly_cash_flow` (security invoker, so RLS
 applies) feed Home and Insights.

@@ -63,6 +63,7 @@ export function SubscriptionsView({ items, totals, categories, today, historyFro
 
   function inputFor(item: SubscriptionItem, status: Status, amountMinor: number): SubscriptionDecisionInput {
     return {
+      id: item.decisionId,
       merchantKey: item.merchantKey,
       cadence: item.cadence,
       status,

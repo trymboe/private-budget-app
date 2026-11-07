@@ -366,8 +366,8 @@ export function buildSubscriptionList(
   }
   for (const d of unmatched) items.push(makeItem(d, chargesForDecision(d, charges), null, today));
 
-  // Two detected series with the same merchant and cadence would share a key;
-  // keep keys unique for the UI (only the first can carry a decision).
+  // Two series with the same merchant and cadence would share a key; keep keys
+  // unique for the UI. Each carries its own decision (saved by decisionId).
   const seen = new Map<string, number>();
   for (const item of items) {
     const n = seen.get(item.key) ?? 0;
