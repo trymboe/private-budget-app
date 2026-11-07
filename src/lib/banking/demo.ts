@@ -181,7 +181,12 @@ export const demoBank: BankProvider = {
   },
 
   async fetchBalance({ accountUid }) {
-    return { amountMinor: accountUid === "demo-savings" ? 8_450_000 : 1_284_350, currency: "NOK" };
+    return {
+      amountMinor: accountUid === "demo-savings" ? 8_450_000 : 1_284_350,
+      currency: "NOK",
+      type: "ITBD",
+      referenceDate: todayIn(),
+    };
   },
 
   normalize(raw, accountCurrency) {

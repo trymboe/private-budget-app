@@ -2,7 +2,7 @@ import "server-only";
 import { createHash, createPrivateKey, type KeyObject } from "node:crypto";
 import { SignJWT } from "jose";
 import { bankingEnv } from "@/lib/env";
-import { parseDecimalToMinor } from "@/lib/money";
+import { pickBalance, type RawBalance } from "./balance";
 import { normalizeEnableBanking, type EnableBankingTransaction } from "./normalize";
 import { normalizePrivateKeyPem } from "./pem";
 import {
@@ -103,9 +103,7 @@ type SessionResponse = {
   }[];
 };
 
-type BalancesResponse = {
-  balances: { balance_amount?: { amount?: string; currency?: string }; balance_type?: string }[];
-};
+type BalancesResponse = { balances?: RawBalance[] };
 
 function maskIban(iban: string | null | undefined): string | null {
   if (!iban) return null;
@@ -174,14 +172,8 @@ export const enableBanking: BankProvider = {
 
   async fetchBalance({ accountUid }) {
     const data = await request<BalancesResponse>("GET", `/accounts/${encodeURIComponent(accountUid)}/balances`);
-    // Prefer booked/available balances in a stable order.
-    const order = ["CLBD", "ITBD", "ITAV", "CLAV", "XPCD", "OTHR"];
-    const sorted = [...(data.balances ?? [])].sort(
-      (a, b) => order.indexOf(a.balance_type ?? "OTHR") - order.indexOf(b.balance_type ?? "OTHR"),
-    );
-    const b = sorted[0]?.balance_amount;
-    if (!b?.amount || !b.currency) return null;
-    return { amountMinor: parseDecimalToMinor(b.amount, b.currency), currency: b.currency };
+    // Booked first, most recent first; see balance.ts.
+    return pickBalance(data.balances);
   },
 
   normalize(raw, accountCurrency) {

@@ -3,6 +3,7 @@
 // only ever talks to this interface.
 import type { IsoDate } from "@/lib/dates";
 import type { Minor } from "@/lib/money";
+import type { BankBalance } from "./balance";
 
 export type ProviderId = "enable_banking" | "demo";
 
@@ -109,7 +110,8 @@ export interface BankProvider {
     continuationKey: string | null;
     strategy?: "default" | "longest";
   }): Promise<RawTransactionPage>;
-  fetchBalance(input: { sessionId: string; accountUid: string }): Promise<{ amountMinor: Minor; currency: string } | null>;
+  /** The account's current balance as the bank reports it (see balance.ts), or null. */
+  fetchBalance(input: { sessionId: string; accountUid: string }): Promise<BankBalance | null>;
   normalize(raw: unknown, accountCurrency: string): NormalizedTransaction | null;
   revoke(sessionId: string): Promise<void>;
 }

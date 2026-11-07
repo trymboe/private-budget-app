@@ -59,7 +59,10 @@ tests/db/              database tests on PGlite
    while long history is still available.
 3. **Daily check (the main loop).** Home shows where the month stands: spent vs
    budget, what is left per day for flexible spending, this week vs a steady pace,
-   and categories that are close to or over budget. A prompt shows how many
+   and categories that are close to or over budget, plus money in the space's
+   accounts (the bank's latest balance per account, with when it was read;
+   savings and other accounts outside the budget are grouped apart, and other
+   currencies are listed but not added to the NOK total). A prompt shows how many
    transactions wait for review.
 4. **Review queue.** One transaction at a time, large type. The suggested category
    (from a learned merchant rule) is a single tap; the full category grid never
@@ -120,7 +123,10 @@ shared category can never be put on a private transaction.
   `identification_hash`) is stable across reconnects, so renewing re-attaches the
   same account. `include_in_budget`, `is_synced`, and the history bookkeeping
   (`history_requested_from`, `history_available_from`, `history_limited`,
-  `initial_import_completed_at`).
+  `initial_import_completed_at`). The latest balance (`balance_minor`), when it was
+  read (`balance_at`), the bank's balance type (`balance_type`, ISO 20022: booked is
+  preferred over available) and the date the bank says it applies to
+  (`balance_reference_date`). Only sync writes them.
 - `categories`: expense or income, icon, colour, `is_fixed` (rent, subscriptions:
   excluded from the pace model), sort order, `archived_at`, `merged_into_id`.
 - `monthly_budgets`: one amount per category per month (a snapshot, so changing
