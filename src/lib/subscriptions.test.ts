@@ -321,6 +321,50 @@ describe("buildSubscriptionList", () => {
   });
 });
 
+describe("buildSubscriptionList with several decisions for one merchant", () => {
+  const apple = () => [...monthly("2026-05-03", 6, 39, "apple"), ...monthly("2026-05-12", 6, 129, "apple")];
+
+  it("keeps a decision on each of two series, whatever order they load in", () => {
+    const charges = apple();
+    const small = decision({ id: "d39", merchantKey: "apple", name: "iCloud", amountMinor: 3_900 });
+    const big = decision({ id: "d129", merchantKey: "apple", name: "Apple One", amountMinor: 12_900 });
+    for (const order of [[small, big], [big, small]]) {
+      const items = buildSubscriptionList(detectRecurring(charges, TODAY), order, charges, TODAY);
+      expect(items.map((i) => [i.decisionId, i.status, i.amountMinor]).sort()).toEqual([
+        ["d129", "confirmed", 12_900],
+        ["d39", "confirmed", 3_900],
+      ]);
+      expect(summarizeSubscriptions(items).monthlyMinor).toBe(16_800);
+    }
+  });
+
+  it("does not let a far-off decision claim a series it does not match", () => {
+    // Only the 129 kr series is detected; iCloud was tracked by hand from one 39 kr payment.
+    const charges = [...monthly("2026-05-12", 6, 129, "apple"), charge("2026-10-03", 39, "apple", { id: "icloud" })];
+    const order = [
+      decision({ id: "d39", merchantKey: "apple", name: "iCloud", amountMinor: 3_900, source: "manual", transactionId: "icloud" }),
+      decision({ id: "d129", merchantKey: "apple", name: "Apple One", amountMinor: 12_900 }),
+    ];
+    const items = buildSubscriptionList(detectRecurring(charges, TODAY), order, charges, TODAY);
+    const byId = Object.fromEntries(items.map((i) => [i.decisionId, i]));
+    expect(byId.d129).toMatchObject({ amountMinor: 12_900, priceIncrease: null });
+    expect(byId.d39).toMatchObject({ name: "iCloud", priceIncrease: null });
+    expect(byId.d39.recentCharges.map((c) => c.amountMinor)).toEqual([3_900]);
+    expect(summarizeSubscriptions(items).monthlyMinor).toBe(16_800);
+  });
+
+  it("shows a decision saved twice for the same series only once", () => {
+    const charges = monthly("2026-05-12", 6, 129, "apple");
+    const twice = [
+      decision({ id: "a", merchantKey: "apple", amountMinor: 12_900 }),
+      decision({ id: "b", merchantKey: "apple", amountMinor: 12_900 }),
+    ];
+    const items = buildSubscriptionList(detectRecurring(charges, TODAY), twice, charges, TODAY);
+    expect(items).toHaveLength(1);
+    expect(summarizeSubscriptions(items).monthlyMinor).toBe(12_900);
+  });
+});
+
 describe("summarizeSubscriptions", () => {
   it("totals confirmed and new items, leaving out cancelled, dismissed and stopped ones", () => {
     const charges = [

@@ -32,6 +32,27 @@ function failed(context: string, error: { message: string; code?: string } | nul
   return { ok: false, error: "That did not save. Please try again." };
 }
 
+/** An existing decision for this merchant and cadence at about this price. */
+async function findDecision(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  spaceId: string,
+  merchantKey: string,
+  every: string,
+  amountMinor: number,
+): Promise<{ ok: true; id: string | null } | { ok: false; error: { message: string; code?: string } }> {
+  const { data, error } = await supabase
+    .from("subscriptions")
+    .select("id, amount_minor")
+    .eq("space_id", spaceId)
+    .eq("merchant_key", merchantKey)
+    .eq("cadence", every);
+  if (error) return { ok: false, error };
+  const close = (data ?? [])
+    .filter((r) => withinTolerance(Number(r.amount_minor), amountMinor))
+    .sort((a, b) => Math.abs(Number(a.amount_minor) - amountMinor) - Math.abs(Number(b.amount_minor) - amountMinor));
+  return { ok: true, id: (close[0]?.id as string | undefined) ?? null };
+}
+
 /** Confirm, dismiss or cancel a subscription in the space being viewed (also used to undo). */
 export async function saveSubscriptionDecision(input: SubscriptionDecisionInput): Promise<ActionResult & { id?: string }> {
   await requireUser();
@@ -39,6 +60,14 @@ export async function saveSubscriptionDecision(input: SubscriptionDecisionInput)
   if (!parsed.success) return { ok: false, error: "Invalid request." };
   const d = parsed.data;
   const [supabase, space] = await Promise.all([createClient(), getActiveSpace()]);
+  let id = d.id ?? null;
+  if (!id) {
+    // A new decision for a series someone already decided about (a second tap,
+    // a stale page, or the partner at the same time) updates that decision.
+    const found = await findDecision(supabase, space.id, d.merchantKey, d.cadence, d.amountMinor);
+    if (!found.ok) return failed("subscription", found.error);
+    id = found.id;
+  }
   const { data, error } = await supabase.rpc("save_subscription", {
     p_space: space.id,
     p_merchant_key: d.merchantKey,
@@ -50,7 +79,7 @@ export async function saveSubscriptionDecision(input: SubscriptionDecisionInput)
     p_source: d.source,
     p_transaction_id: null,
     p_cancelled_on: d.cancelledOn ?? null,
-    p_id: d.id ?? null,
+    p_id: id,
   });
   if (error) return failed("subscription", error);
   revalidatePath("/", "layout");
@@ -92,14 +121,8 @@ export async function trackTransactionAsSubscription(transactionId: string, ever
 
   // Already tracking this merchant at about this price: update that decision
   // instead of adding a second one for the same series.
-  const { data: existing, error: existingError } = await supabase
-    .from("subscriptions")
-    .select("id, amount_minor")
-    .eq("space_id", tx.space_id as string)
-    .eq("merchant_key", key)
-    .eq("cadence", parsed.data.cadence);
-  if (existingError) return failed("track subscription", existingError);
-  const same = (existing ?? []).find((s) => withinTolerance(Number(s.amount_minor), -amount));
+  const same = await findDecision(supabase, tx.space_id as string, key, parsed.data.cadence, -amount);
+  if (!same.ok) return failed("track subscription", same.error);
 
   const { data, error } = await supabase.rpc("save_subscription", {
     // The transaction's own space: RLS already limits it to one you belong to.
@@ -113,7 +136,7 @@ export async function trackTransactionAsSubscription(transactionId: string, ever
     p_source: "manual",
     p_transaction_id: tx.id as string,
     p_cancelled_on: null,
-    p_id: (same?.id as string | undefined) ?? null,
+    p_id: same.id,
   });
   if (error) return failed("track subscription", error);
   revalidatePath("/", "layout");
