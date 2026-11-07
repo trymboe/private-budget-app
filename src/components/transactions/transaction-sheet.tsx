@@ -8,6 +8,7 @@ import { CategoryMark } from "@/components/category-icon";
 import { Button } from "@/components/ui/button";
 import { Label, SectionLabel, Textarea } from "@/components/ui/field";
 import { Sheet } from "@/components/ui/sheet";
+import { TrackSubscription } from "@/components/subscriptions/track-subscription";
 import { useToast } from "@/components/ui/toast";
 import type { Category, TransactionListItem, Treatment } from "@/lib/data/types";
 import { formatDay, type IsoDate } from "@/lib/dates";
@@ -231,6 +232,8 @@ function TransactionDetails({
               onBlur={persistNote}
             />
           </div>
+
+          <TrackSubscription tx={tx} />
 
           {tx.isManual && tx.isMine ? (
             <div className="grid grid-cols-2 gap-2">

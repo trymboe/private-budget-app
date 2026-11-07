@@ -295,6 +295,9 @@ export type SubscriptionItem = {
   cadence: Cadence;
   /** What it costs per charge now. */
   amountMinor: Minor;
+  /** The price the person accepted (stored with the decision), if any. */
+  acceptedMinor: Minor | null;
+  cancelledOn: IsoDate | null;
   monthlyMinor: Minor;
   annualMinor: Minor;
   variable: boolean;
@@ -310,6 +313,7 @@ export type SubscriptionItem = {
   priceIncrease: { fromMinor: Minor; toMinor: Minor } | null;
   /** Charged again after the person said it was cancelled. */
   chargedAfterCancel: { date: IsoDate; amountMinor: Minor } | null;
+  chargeCount: number;
   /** Most recent first, at most 12. */
   recentCharges: { id: string; date: IsoDate; amountMinor: Minor }[];
 };
@@ -416,6 +420,8 @@ function makeItem(d: SubscriptionDecision | null, charges: Charge[], s: Detected
     name: d?.name ?? s!.name,
     cadence,
     amountMinor: current,
+    acceptedMinor: d?.amountMinor ?? null,
+    cancelledOn: d?.cancelledOn ?? null,
     monthlyMinor: monthlyEquivalent(current, cadence),
     annualMinor: annualCost(current, cadence),
     variable,
@@ -427,6 +433,7 @@ function makeItem(d: SubscriptionDecision | null, charges: Charge[], s: Detected
     overdue,
     priceIncrease,
     chargedAfterCancel,
+    chargeCount: charges.length,
     recentCharges: charges
       .slice(-12)
       .reverse()

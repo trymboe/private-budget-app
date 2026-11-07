@@ -3,6 +3,7 @@ import { ArrowRight, Settings } from "lucide-react";
 import { CategoryMark } from "@/components/category-icon";
 import { DataNotes, ConsentReminder } from "@/components/data-notes";
 import { Page } from "@/components/page";
+import { SubscriptionsCard } from "@/components/subscriptions/subscriptions-card";
 import { Money } from "@/components/ui/amount";
 import { SectionLabel } from "@/components/ui/field";
 import { BudgetBar } from "@/components/ui/progress";
@@ -48,6 +49,7 @@ export function HomeView({ summary, today, reviewCount, hasAccounts, hasCategori
         {!hasAccounts ? <ConnectPrompt /> : null}
         {!onboarding.completed && hasCategories ? <FinishSetup profile={onboarding} /> : null}
         <DataNotes notes={notes} uncategorized={summary.uncategorized} foreignCount={summary.foreignCurrencyCount} />
+        <SubscriptionsCard />
       </div>
 
       {summary.totalBudget > 0 ? <WeekInsight summary={summary} today={today} /> : null}
